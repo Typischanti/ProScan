@@ -86,5 +86,6 @@ def export_frame(roll, number):
     if export['dng']:
         written.append(folder / (file_stem(roll, number) + '.dng'))
         raw = capture.load_raw(roll.frame_dir(number), export['dng_dust_cleaned'])
-        dng.write(written[-1], raw, roll.details, number, frame.get('crop', {}).get('turn', 0))
+        dng.write(written[-1], raw, roll.details, number, frame.get('crop', {}).get('turn', 0),
+                  frame.get('scanner', 'Reflecta CrystalScan 7200'))
     return written

@@ -1,7 +1,11 @@
 # Pro Scan
 
-Professional film scanning for the Reflecta CrystalScan 7200, modelled on the
-Fujifilm Frontier workflow. Terms: [GLOSSARY.md](GLOSSARY.md). Decisions:
+Professional film scanning, modelled on the Fujifilm Frontier workflow. Made for
+the Reflecta CrystalScan 7200; other Reflecta/PIE scanners (CrystalScan, ProScan,
+DigitDia) use the same driver. Nikon Coolscan, Plustek OpticFilm and Epson
+Perfection scanners with a film unit work through the system's SANE backends,
+without infrared dust cleaning or multi-exposure; Epson flatbeds scan their whole
+film area at 1600 dpi. These have not been tried on the real devices yet. Terms: [GLOSSARY.md](GLOSSARY.md). Decisions:
 [docs/adr/](docs/adr/). UI design: [docs/design/](docs/design/) (open
 `Pro Scan Mockups.dc.html`).
 

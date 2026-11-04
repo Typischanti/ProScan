@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 import copy
+import json
 import tempfile
 
 import numpy as np
@@ -300,11 +301,14 @@ class MainWindow(QMainWindow):
     def confirm_preview(self):
         self.step = 'raw'
         self.scanner_state = 'busy'
-        self.progress = (0., 1, 2 if self.roll.settings['multi_exposure'] else 1)
         roll, n, device = self.roll, self.target, self.device
+        # Infrared and multi-exposure only where the scanner has them (Reflecta/PIE).
+        can = scanner.features(device)
+        infrared, multi = roll.infrared and can['infrared'], roll.settings['multi_exposure'] and can['multi_exposure']
+        self.progress = (0., 1, 2 if multi else 1)
 
         def scan(directory):
-            return capture.scan_raw(device, directory, infrared=roll.infrared, multi_exposure=roll.settings['multi_exposure'],
+            return capture.scan_raw(device, directory, infrared=infrared, multi_exposure=multi,
                                     progress=self.bridge.progress.emit)
 
         if self.rescanning:
@@ -321,13 +325,14 @@ class MainWindow(QMainWindow):
         n = self.target
         # The frame's size, kept so drawing never has to open its raw scan (which a rescan briefly moves).
         size = list(np.load(self.roll.frame_dir(n) / 'rohscan.npy', mmap_mode='r').shape[:2])
+        scan = {'dpi': json.loads((self.roll.frame_dir(n) / 'scan.json').read_text())['dpi'], 'scanner': scanner.model(self.device)}
         if self.rescanning:
-            self.frame(n)['size'] = size
+            self.frame(n).update(size=size, **scan)
         else:
             previous = self.roll.frames[-1].get('crop') if self.roll.frames else None
             # The previous crop carries over, its quarter turn does not: every photo has its own orientation.
             crop = {**previous, 'turn': 0} if previous else develop.default_crop(size)
-            self.roll.frames.append({'number': n, 'size': size, 'correction': dict(develop.AUTO), 'crop': crop})
+            self.roll.frames.append({'number': n, 'size': size, **scan, 'correction': dict(develop.AUTO), 'crop': crop})
         for cache in (self.raw_cache, self.images, self.thumbs, self.auto):
             cache.pop(n, None)
         # A new scan gets its own film base measurement; a source picked by hand (B) stays.
@@ -696,7 +701,7 @@ class MainWindow(QMainWindow):
     # --- rendering -----------------------------------------------------------------------------
 
     def scanner_text(self):
-        return tr('scanner_' + self.scanner_state), {'ok': t.GREEN, 'busy': t.BLUE, 'err': t.RED, 'off': t.RED}[self.scanner_state]
+        return tr('scanner_' + self.scanner_state, model=scanner.model(self.device) if self.device else 'Scanner'), {'ok': t.GREEN, 'busy': t.BLUE, 'err': t.RED, 'off': t.RED}[self.scanner_state]
 
     def export_status(self, n):
         state = self.exports.get(n)
@@ -774,7 +779,7 @@ class MainWindow(QMainWindow):
                 h, w = frame['size']
                 cw, ch = round(frame['crop']['w'] * w), round(frame['crop']['h'] * h)
                 px = f'{ch} × {cw} px' if frame['crop'].get('turn', 0) in (90, 270) else f'{cw} × {ch} px'
-                self.view.show(self.image(self.sel), info=(f'{tr("frame")} {self.sel} · {scanner.RAW_DPI} dpi · {px}',
+                self.view.show(self.image(self.sel), info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}',
                                                            self.crop_text(frame['crop'])))
             else:
                 self.view.show(None)

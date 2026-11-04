@@ -35,19 +35,20 @@ def xmp(details, number):
 ORIENTATION = {0: 1, 90: 6, 180: 3, 270: 8}
 
 
-def write(path, raw, details, number, turn=0):
+def write(path, raw, details, number, turn=0, scanner='Reflecta CrystalScan 7200'):
     """Write float32 linear RGB `raw` (scanner counts) as a 16-bit LinearRaw DNG. Notes are never written.
 
     The pixels stay as scanned; `turn` (degrees clockwise) only sets the Orientation tag.
     """
     data = np.clip(np.rint(raw), 0, 65535).astype(np.uint16)
+    make, _, model = scanner.partition(' ')
     tags = [
         (274, 'H', 1, ORIENTATION[turn], True),
-        (271, 's', 0, 'Reflecta', True),
-        (272, 's', 0, 'CrystalScan 7200', True),
+        (271, 's', 0, make, True),
+        (272, 's', 0, model or make, True),
         (50706, 'B', 4, (1, 4, 0, 0), True),          # DNGVersion
         (50707, 'B', 4, (1, 1, 0, 0), True),          # DNGBackwardVersion
-        (50708, 's', 0, 'Reflecta CrystalScan 7200', True),
+        (50708, 's', 0, scanner, True),
         (50717, 'I', 1, 65535, True),                 # WhiteLevel
         (50721, 10, 9, _srational(np.ravel(XYZ_TO_SRGB)), True),  # ColorMatrix1
         (50728, 5, 3, (1, 1, 1, 1, 1, 1), True),      # AsShotNeutral

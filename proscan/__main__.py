@@ -22,7 +22,7 @@ def show_preview(preview, path):
 def scan(roll):
     device = scanner.find_device()
     if device is None:
-        raise SystemExit('Kein Scanner gefunden. CrystalScan 7200 einschalten und per USB anschließen.')
+        raise SystemExit('Kein Filmscanner gefunden. Scanner einschalten und per USB anschließen.')
     with tempfile.TemporaryDirectory() as work:
         while True:
             number = len(roll.frames) + 1
@@ -34,7 +34,8 @@ def scan(roll):
                 continue
             reports = []
             roll.add_frame(lambda d: reports.append(capture.scan_raw(
-                device, d, infrared=roll.infrared, multi_exposure=roll.settings['multi_exposure'])))
+                device, d, infrared=roll.infrared and scanner.features(device)['infrared'],
+                multi_exposure=roll.settings['multi_exposure'] and scanner.features(device)['multi_exposure'])))
             report = reports[0]
             merge, dust = report.get('merge', {}), report.get('dust', {})
             print('  Mehrfachbelichtung:', merge.get('reason') or ('Kanäle ' + ''.join(merge.get('used_channels', []))))

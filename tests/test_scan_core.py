@@ -73,6 +73,82 @@ class FakeScanner:
         return log(settings)
 
 
+# Option lists as scanimage --all-options prints them (abridged).
+EPSON = """Options specific to device `epson2:libusb:001:004':
+  Scan Mode:
+    --mode Lineart|Gray|Color [Lineart]
+    --depth 8|16 [8]
+    --resolution 50|75|100|150|200|300|400|600|800|1200|1600|2400|3200|4800|6400dpi [50]
+    --film-type Positive Film|Negative Film|Positive Slide|Negative Slide [inactive]
+    --preview[=(yes|no)] [no]
+  Advanced:
+    --source Flatbed|Transparency Unit [Flatbed]
+"""
+PLUSTEK = """Options specific to device `genesys:libusb:001:005':
+  Scan Mode:
+    --mode Color|Gray|Lineart [Gray]
+    --source Transparency Adapter|Transparency Adapter Infrared [Transparency Adapter]
+    --preview[=(yes|no)] [no]
+    --depth 8|16 [8]
+    --resolution 900|1200|1800|3600|7200dpi [900]
+"""
+NIKON = """Options specific to device `coolscan3:usb:libusb:001:006':
+    --preview[=(yes|no)] [no]
+    --infrared[=(yes|no)] [no]
+    --depth 8|16 [8]
+    --resolution 4..4000dpi [4000]
+    --negative[=(yes|no)] [no]
+"""
+CANON_LIDE = """Options specific to device `genesys:libusb:001:007':
+    --mode Color|Gray|Lineart [Gray]
+    --source Flatbed [Flatbed]
+    --depth 8|16 [8]
+    --resolution 75|150|300|600|1200dpi [75]
+"""
+
+
+class OtherScannerTests(unittest.TestCase):
+    def test_arguments_from_the_options_the_device_lists(self):
+        def args(device, text, dpi):
+            return scanner.generic_arguments(device, text, 'x.pnm', dpi)[:-4]
+        self.assertEqual(args('epson2:x', EPSON, 3600), ['-d', 'epson2:x', '--source=Transparency Unit', '--mode=Color',
+                         '--depth=16', '--resolution=1600', '--film-type=Positive Film', '--preview=no'])
+        self.assertEqual(args('genesys:x', PLUSTEK, 3600), ['-d', 'genesys:x', '--source=Transparency Adapter', '--mode=Color',
+                         '--depth=16', '--resolution=3600', '--preview=no'])
+        self.assertEqual(args('coolscan3:x', NIKON, 3600), ['-d', 'coolscan3:x', '--depth=16', '--resolution=3600',
+                         '--negative=no', '--preview=no', '--infrared=no'])
+        self.assertEqual(scanner.dpi(scanner.generic_arguments('coolscan3:x', NIKON, 'x.pnm', 600)), 600)
+        with self.assertRaises(scanner.ScannerError):
+            scanner.generic_arguments('genesys:y', CANON_LIDE, 'x.pnm', 3600)
+
+    def test_finds_film_scanners_only(self):
+        lists = {False: '', True: 'genesys:y\tCanon LiDE 220\nepson2:x\tEpson Perfection V600\npieusb:z\tReflecta CrystalScan 7200\n'}
+
+        def run(args, timeout, progress=None, system=None):
+            if args[0].startswith('--formatted'):
+                return lists[system]
+            device = args[1]
+            source = next((a for a in args if a.startswith('--source=')), None)
+            return {'genesys:y': CANON_LIDE, 'epson2:x': EPSON}[device] + (source or '')
+        with mock.patch.object(scanner, 'run', run), mock.patch.object(scanner, '_listed', {}):
+            # The system's own pieusb is not the patched driver, and the Canon flatbed has no film unit.
+            self.assertEqual(scanner.find_device(), 'epson2:x')
+            self.assertEqual(scanner.model('epson2:x'), 'Epson Perfection V600')
+            self.assertEqual(scanner.features('epson2:x'), {'infrared': False, 'multi_exposure': False})
+            self.assertEqual(scanner.dpi(scanner.raw_arguments('epson2:x', 'x.pnm')), 1600)
+            with self.assertRaises(ValueError):
+                scanner.raw_arguments('epson2:x', 'x.pnm', infrared=True)
+            lists[False] = 'pieusb:0\tReflecta CrystalScan 7200\n'
+            self.assertEqual(scanner.find_device(), 'pieusb:0')
+
+    def test_transfer_progress_counts_fully_without_the_patched_driver(self):
+        seen = []
+        script = 'import sys, time\nfor p in (25, 50, 100):\n    sys.stderr.write(f"Progress: {p}.0%\\r"); sys.stderr.flush(); time.sleep(.1)\n'
+        with mock.patch.object(scanner, 'SCANIMAGE', '/usr/bin/python3'):
+            scanner.run(['-c', script, '-d', 'epson2:x'], 10, seen.append)
+        self.assertEqual(seen, [.25, .5, 1.])
+
+
 class ScannerTests(unittest.TestCase):
     def test_arguments_and_driver_log(self):
         ranges = scanner.capabilities(OPTIONS)

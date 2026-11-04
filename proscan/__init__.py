@@ -1,1 +1,1 @@
-"""Pro Scan: professional film scanning for the Reflecta CrystalScan 7200."""
+"""Pro Scan: professional film scanning for Reflecta/PIE, Nikon Coolscan, Plustek OpticFilm and Epson Perfection scanners."""

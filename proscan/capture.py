@@ -42,10 +42,12 @@ def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run, pr
     directory.mkdir(parents=True)
     passes = directory / '.durchlaeufe'
     passes.mkdir()
-    report = {'dpi': scanner.RAW_DPI, 'infrared': infrared, 'multi_exposure': multi_exposure}
+    report = {'infrared': infrared, 'multi_exposure': multi_exposure}
     try:
         reference_path = passes / '1.pnm'
-        log = run(scanner.raw_arguments(device, reference_path, infrared=infrared), scanner.RAW_TIMEOUT, stage(0))
+        args = scanner.raw_arguments(device, reference_path, infrared=infrared)
+        report['dpi'] = scanner.dpi(args)
+        log = run(args, scanner.RAW_TIMEOUT, stage(0))
         data = pnm.read(reference_path)
         if data.shape[2] != (4 if infrared else 3):
             raise scanner.ScannerError('Der Scanner lieferte unerwartete Farbkanäle.')

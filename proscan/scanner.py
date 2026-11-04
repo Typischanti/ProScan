@@ -1,7 +1,11 @@
-"""The CrystalScan 7200 through scanimage and the patched pieusb driver in driver/.
+"""Film scanners through scanimage.
 
-The driver is loaded from this package, never from the system SANE setup, so
-XSane's configuration cannot change what Pro Scan talks to.
+Reflecta/PIE scanners (CrystalScan, ProScan, DigitDia) use the patched pieusb
+driver in driver/, loaded from this package, never from the system SANE setup,
+so XSane's configuration cannot change what Pro Scan talks to. Only these give
+infrared and multi-exposure. Nikon Coolscan, Plustek OpticFilm and Epson
+Perfection scanners use the system's SANE backends with the options each
+device lists itself (see generic_arguments).
 """
 from pathlib import Path
 import os
@@ -27,13 +31,35 @@ class ScannerHung(ScannerError):
     pass
 
 
-def environment():
+# Backends besides pieusb, and what they scan film with. Flatbeds scan their whole film area.
+BACKENDS = {'coolscan3': 'film', 'genesys': 'transparency', 'epson2': 'flatbed', 'epsonds': 'flatbed'}
+# shortcut: flatbeds scan the whole film holder, so their raw scan is kept at 1600 dpi; scan one frame's area once the preview can mark it
+FLATBED_DPI = 1600
+models = {}  # device -> 'Vendor Model', filled by find_device
+
+
+def bundled(device):
+    return device is None or device.startswith('pieusb:')
+
+
+def features(device):
+    """What the device can do beyond a colour scan."""
+    return {'infrared': bundled(device), 'multi_exposure': bundled(device)}
+
+
+def model(device):
+    return models.get(device) or device.split(':')[0]
+
+
+def environment(system=False):
     env = os.environ.copy()
+    env['LC_ALL'] = 'C'
+    if system:
+        return env
     env['SANE_CONFIG_DIR'] = str(ROOT / 'sane')
     env['LD_LIBRARY_PATH'] = str(ROOT / 'driver')
     # From level 5 on the driver logs the exposure settings it sent to the scanner (see telemetry()).
     env['SANE_DEBUG_PIEUSB'] = '5'
-    env['LC_ALL'] = 'C'
     return env
 
 
@@ -47,11 +73,16 @@ def _failed(log):
     return ScannerError(lines[-1] if lines else 'scanimage fehlgeschlagen.')
 
 
-def run(args, timeout, progress=None):
-    """Run scanimage; return its stderr (driver log). `progress(fraction)` follows a scan as it runs."""
+def run(args, timeout, progress=None, system=None):
+    """Run scanimage; return its stderr (driver log). `progress(fraction)` follows a scan as it runs.
+
+    system: use the system's SANE backends; by default those of any device but a pieusb one.
+    """
+    if system is None:
+        system = not bundled(args[args.index('-d') + 1] if '-d' in args else None)
     if progress is None:
         try:
-            result = subprocess.run([SCANIMAGE, *args], env=environment(), capture_output=True,
+            result = subprocess.run([SCANIMAGE, *args], env=environment(system), capture_output=True,
                                     text=True, errors='replace', timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             raise ScannerHung(f'Scanner reagiert seit {timeout} s nicht.') from exc
@@ -61,7 +92,8 @@ def run(args, timeout, progress=None):
     deadline = time.monotonic() + timeout
     log = bytearray()
     last = None
-    with subprocess.Popen([SCANIMAGE, *args], env=environment(), stdout=subprocess.DEVNULL,
+    acquisition = False
+    with subprocess.Popen([SCANIMAGE, *args], env=environment(system), stdout=subprocess.DEVNULL,
                           stderr=subprocess.PIPE) as process:
         fd = process.stderr.fileno()
         while True:
@@ -79,8 +111,12 @@ def run(args, timeout, progress=None):
             events = list(PROGRESS.finditer(log, max(0, len(log) - len(chunk) - 64)))
             if events:
                 acquired, transferred = events[-1].groups()
+                acquisition = acquisition or acquired is not None
                 # shortcut: capture and transfer count half each; measure their real durations to weight them
-                value = int(acquired) / 200 if acquired else .5 + float(transferred) / 200
+                if not acquisition:  # only the patched driver reports the capture; others report the transfer alone
+                    value = float(transferred) / 100
+                else:
+                    value = int(acquired) / 200 if acquired else .5 + float(transferred) / 200
                 if value != last:
                     last = value
                     progress(min(1., value))
@@ -95,14 +131,119 @@ def run(args, timeout, progress=None):
     return text
 
 
+def _devices(system):
+    text = run(['--formatted-device-list=%d\t%v %m%n'], 30, system=system)
+    return [line.split('\t', 1) for line in text.splitlines() if '\t' in line]
+
+
 def find_device():
-    """The CrystalScan's SANE device name, or None when it is not connected."""
-    text = run(['--formatted-device-list=%d%n'], 30)
-    return next((line for line in text.splitlines() if line.startswith('pieusb:')), None)
+    """The SANE device name of a connected film scanner, or None; a Reflecta/PIE scanner first."""
+    for system in (False, True):
+        for device, name in _devices(system):
+            backend = device.split(':')[0]
+            if bundled(device) and not system:
+                models[device] = name.strip()
+                return device
+            if backend in BACKENDS:
+                try:
+                    usable = BACKENDS[backend] == 'film' or transparency_source(parse_options(device_options(device)))
+                except ScannerError:
+                    usable = False
+                if usable:  # a flatbed without film unit cannot scan film
+                    models[device] = name.strip()
+                    return device
+    return None
 
 
 def options(device, run=run):
     return run(['-d', device, '--mode=Color', '--depth=16', '--all-options', '--dont-scan'], 30)
+
+
+_listed = {}
+
+
+def device_options(device, source=None):
+    """scanimage's option list of a system-SANE device; options can depend on the source, so it is set first."""
+    key = (device, source)
+    if key not in _listed:
+        _listed[key] = run(['-d', device, *([f'--source={source}'] if source else []), '--all-options', '--dont-scan'], 30)
+    return _listed[key]
+
+
+def parse_options(text):
+    """{option: [choices]} from scanimage --all-options; a range lo..hi gives [lo, hi] and a flag ['yes', 'no']."""
+    result = {}
+    for line in text.splitlines():
+        match = re.match(r'\s+--([\w-]+)(.*)$', line)
+        if not match:
+            continue
+        name, rest = match.groups()
+        rest = re.sub(r'\s*\[[^\]]*\]\s*$', '', rest.strip())  # the current value
+        if rest.startswith('[=('):
+            result[name] = ['yes', 'no']
+        elif '..' in rest:
+            result[name] = [float(v) for v in re.findall(r'[0-9]+(?:\.[0-9]+)?', rest)[:2]]
+        else:
+            result[name] = [c.strip() for c in re.sub(r'(dpi|bit|mm|%|us)$', '', rest).split('|') if c.strip()]
+    return result
+
+
+def transparency_source(listed):
+    """The source value that scans film (a film unit or transparency adapter), or None."""
+    return next((c for c in listed.get('source', []) if re.search(r'transparen|film|tpu', c, re.I)), None)
+
+
+def _resolution(listed, wanted):
+    choices = listed.get('resolution', [])
+    if len(choices) == 2 and isinstance(choices[0], float):
+        return int(min(max(wanted, choices[0]), choices[1]))
+    numbers = [int(float(c)) for c in choices if re.fullmatch(r'[0-9.]+', c)]
+    if not numbers:
+        raise ScannerError('Der Scanner meldet keine Auflösungen.')
+    return min(numbers, key=lambda d: abs(d - wanted))
+
+
+def generic_arguments(device, text, output, dpi):
+    """scanimage arguments for a system-SANE film scan: linear 16-bit colour, no inversion or corrections.
+
+    `text` is the device's option list; only options it lists are set, since names and values differ by backend.
+    """
+    listed = parse_options(text)
+    args = ['-d', device]
+    source = transparency_source(listed)
+    if source:
+        args.append(f'--source={source}')
+    elif BACKENDS.get(device.split(':')[0]) != 'film':
+        raise ScannerError('Der Scanner hat keine Filmeinheit.')
+    if 'mode' in listed:
+        mode = next((c for c in listed['mode'] if c.lower() == 'color'), None)
+        if not mode:
+            raise ScannerError('Der Scanner bietet keinen Farbmodus.')
+        args.append(f'--mode={mode}')
+    if 'depth' in listed:
+        if '16' not in listed['depth']:
+            raise ScannerError('Der Scanner liefert keine 16 Bit.')
+        args.append('--depth=16')
+    if BACKENDS.get(device.split(':')[0]) == 'flatbed':
+        dpi = min(dpi, FLATBED_DPI)
+    args.append(f'--resolution={_resolution(listed, dpi)}')
+    # The development inverts negatives itself, so every film is scanned as a plain transparency.
+    film = next((c for c in listed.get('film-type', []) if 'positive' in c.lower()), None)
+    if film:
+        args.append(f'--film-type={film}')
+    for flag in ('negative', 'preview', 'infrared'):
+        if flag in listed:
+            args.append(f'--{flag}=no')
+    return args + ['--format=pnm', '--progress', '--output-file', str(output)]
+
+
+def _generic(device, output, dpi):
+    source = transparency_source(parse_options(device_options(device)))
+    return generic_arguments(device, device_options(device, source), output, dpi)
+
+
+def dpi(args):
+    return int(next(a for a in args if a.startswith('--resolution=')).split('=')[1])
 
 
 def _arguments(device, output, dpi):
@@ -114,11 +255,15 @@ def _arguments(device, output, dpi):
 
 
 def preview_arguments(device, output):
-    return _arguments(device, output, PREVIEW_DPI)
+    return _arguments(device, output, PREVIEW_DPI) if bundled(device) else _generic(device, output, PREVIEW_DPI)
 
 
 def raw_arguments(device, output, infrared=False, manual=None):
     """One pass of a raw scan: the RGBI reference pass, or a Color pass with manual exposure."""
+    if not bundled(device):
+        if infrared or manual is not None:
+            raise ValueError('Infrarot und Mehrfachbelichtung nur mit Reflecta/PIE-Scannern.')
+        return _generic(device, output, RAW_DPI)
     args = _arguments(device, output, RAW_DPI) + ['--shading-analysis=yes']
     if infrared:
         if manual is not None:
