@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"></helmet>
+<div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;background:#1a1a1a;color:#e6e6e6;font-family:'IBM Plex Sans',sans-serif;font-size:14px;overflow:hidden;">
+  <div style="height:60px;flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:24px;padding:0 20px;background:#121212;border-bottom:1px solid #2a2a2a;">
+    <div style="display:flex;align-items:center;gap:16px;min-width:0;">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8a8a8a;">PRO SCAN</span>
+      <div style="display:flex;flex-direction:column;min-width:0;"><span style="font-size:14px;color:#e6e6e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ rollName }}</span><span style="font-size:12px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ rollMeta }}</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;padding:8px 18px;background:#1c1c1c;border:1px solid #2e2e2e;border-radius:4px;min-width:420px;">
+      <span style="width:10px;height:10px;border-radius:5px;flex:none;background:{{ accColor }};"></span>
+      <span style="font-size:13px;color:#8a8a8a;white-space:nowrap;">{{ stepFrame }}</span>
+      <span style="font-size:19px;font-weight:500;color:#f2f2f2;white-space:nowrap;">{{ stepText }}</span>
+      <sc-if value="{{ showProgress }}" hint-placeholder-val="{{ false }}">
+        <div style="width:140px;height:6px;background:#2e2e2e;border-radius:3px;overflow:hidden;"><div style="width:64%;height:100%;background:oklch(0.74 0.10 240);"></div></div>
+      </sc-if>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:18px;font-size:13px;color:#a3a3a3;">
+      <span style="display:flex;align-items:center;gap:8px;white-space:nowrap;"><span style="width:8px;height:8px;border-radius:4px;background:{{ scannerColor }};"></span>{{ scannerText }}</span>
+      <sc-if value="{{ hasRoll }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;gap:6px;">
+          <span style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid {{ gridBtnBorder }};border-radius:3px;color:#d0d0d0;white-space:nowrap;">{{ t.grid }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;">G</span></span>
+          <span style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #3a3a3a;border-radius:3px;color:#d0d0d0;white-space:nowrap;">{{ t.rollSettings }}</span>
+        </div>
+      </sc-if>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;">{{ langDE }} · {{ langEN }}</span>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex;">
+    <div style="position:relative;flex:1;min-width:0;display:flex;align-items:center;justify-content:center;background:#1a1a1a;">
+
+      <sc-if value="{{ showImage }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="position:relative;width:1020px;height:680px;background:repeating-linear-gradient(135deg,#2c2c2c 0 14px,#292929 14px 28px);display:flex;align-items:flex-end;justify-content:flex-start;">
+            <span style="margin:16px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#7a7a7a;">{{ imgLabel }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#7a7a7a;"><span>{{ imgInfoL }}</span><span>{{ imgInfoR }}</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showPreview }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="position:relative;width:1020px;height:680px;box-sizing:border-box;border:3px dashed oklch(0.80 0.12 80);background:#242424;overflow:hidden;">
+            <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 23px,#1a1a1a 23px 24px),repeating-linear-gradient(90deg,#303030 0 23px,#1a1a1a 23px 24px);opacity:.75;"></div>
+            <div style="position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:14px;padding:12px 18px;background:#121212;">
+              <span style="padding:3px 10px;background:oklch(0.80 0.12 80);color:#141414;font-size:13px;font-weight:600;letter-spacing:.12em;">{{ t.previewWord }}</span>
+              <span style="font-size:15px;color:#e6e6e6;">{{ previewTitle }}</span>
+              <span style="font-size:13px;color:#9a9a9a;">{{ t.previewSub }}</span>
+            </div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:88px;font-weight:600;letter-spacing:.2em;color:#3c3c3c;">{{ t.previewWord }}</div>
+            <div style="position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:16px;padding:18px;background:#121212;">
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;background:#e6e6e6;color:#111;border-radius:4px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;padding:2px 8px;border:1px solid #555;border-radius:3px;">Enter</span><span style="font-size:17px;font-weight:500;">{{ previewYes }}</span></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border:1px solid #4a4a4a;border-radius:4px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;padding:2px 8px;border:1px solid #6a6a6a;border-radius:3px;">Esc</span><span style="font-size:17px;">{{ previewNo }}</span></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#7a7a7a;"><span>{{ t.previewLowres }}</span><span>{{ t.previewNotSaved }}</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showRescanCard }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;top:110px;right:56px;width:300px;display:flex;flex-direction:column;gap:12px;padding:16px 18px;background:#141414;border:1px solid #3a3a3a;border-radius:4px;">
+          <span style="font-size:15px;font-weight:500;">{{ t.rescanTitle }}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b8b8b8;"><span>✓ {{ t.rescanKeep }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:#e6e6e6;padding-left:16px;">D +1  C +1  M 0  Y −2</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#9a9a9a;padding-left:16px;">G 0  S 3 · 3:2 · −0,2°</span></div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:#b8b8b8;padding-top:8px;border-top:1px solid #2a2a2a;"><span>→ {{ t.rescanMove }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#9a9a9a;padding-left:16px;">Ersetzt/Bild 17 (03.11.2026)</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;width:100%;height:100%;padding:16px 24px;box-sizing:border-box;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;"><span style="font-size:15px;">{{ t.gridTitle }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8a8a8a;">{{ t.gridHint }}</span></div>
+          <div style="flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:14px;">
+            <sc-for list="{{ gridTiles }}" as="g" hint-placeholder-count="12">
+              <div style="display:flex;flex-direction:column;gap:6px;min-height:0;">
+                <div style="position:relative;flex:1;min-height:0;box-sizing:border-box;border:{{ g.border }};background:{{ g.bg }};">
+                  <sc-if value="{{ g.corrected }}"><span style="position:absolute;top:4px;left:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:0 4px;background:#e6e6e6;color:#111;">±</span></sc-if>
+                  <sc-if value="{{ g.borrowed }}"><span style="position:absolute;top:4px;right:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:0 4px;border:1px solid #cfcfcf;color:#e6e6e6;background:#141414;">FB</span></sc-if>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:12px;">
+                  <span style="color:{{ g.numColor }};font-weight:600;">{{ g.n }}</span>
+                  <span style="color:{{ g.valColor }};white-space:pre;">{{ g.vals }}</span>
+                  <span style="color:{{ g.expColor }};width:12px;text-align:right;">{{ g.expGlyph }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showCrop }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="position:relative;width:1020px;height:680px;overflow:hidden;background:#141414;">
+            <div style="position:absolute;inset:-20px;transform:rotate(-0.4deg);background:repeating-linear-gradient(135deg,#2c2c2c 0 14px,#292929 14px 28px);"></div>
+            <div style="position:absolute;left:66px;top:44px;width:888px;height:592px;box-shadow:0 0 0 2000px rgba(12,12,12,.68);border:1px solid #e6e6e6;">
+              <div style="position:absolute;left:33.33%;top:0;bottom:0;width:1px;background:rgba(230,230,230,.35);"></div>
+              <div style="position:absolute;left:66.66%;top:0;bottom:0;width:1px;background:rgba(230,230,230,.35);"></div>
+              <div style="position:absolute;top:33.33%;left:0;right:0;height:1px;background:rgba(230,230,230,.35);"></div>
+              <div style="position:absolute;top:66.66%;left:0;right:0;height:1px;background:rgba(230,230,230,.35);"></div>
+              <div style="position:absolute;left:-5px;top:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;right:-5px;top:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;left:-5px;bottom:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;left:calc(50% - 5px);top:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;left:calc(50% - 5px);bottom:-5px;width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;left:-5px;top:calc(50% - 5px);width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;right:-5px;top:calc(50% - 5px);width:10px;height:10px;background:#e6e6e6;"></div>
+              <div style="position:absolute;left:12px;top:12px;display:flex;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;"><span style="padding:3px 8px;background:#121212;color:#e6e6e6;">3:2</span><span style="padding:3px 8px;background:#121212;color:#e6e6e6;">{{ t.cropAngle }}</span></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#7a7a7a;"><span>{{ t.cropInfoL }}</span><span>{{ t.cropInfoR }}</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showFail }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;width:1020px;height:680px;box-sizing:border-box;border:1px solid #333;background:#161616;display:flex;align-items:center;justify-content:center;">
+          <span style="position:absolute;left:16px;top:12px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6e6e6e;">{{ t.failSlot }}</span>
+          <div style="width:560px;display:flex;flex-direction:column;gap:18px;padding:28px 30px;background:#1f1f1f;border:1px solid #3a3a3a;border-top:3px solid oklch(0.68 0.15 25);border-radius:4px;">
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:22px;font-weight:500;">{{ t.failTitle }}</span><span style="font-size:14px;color:#a3a3a3;">{{ t.failBody }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;background:#181818;border-radius:3px;font-size:14px;color:#d0d0d0;"><span>{{ t.failSafe1 }}</span><span style="color:#a3a3a3;">{{ t.failSafe2 }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:#e6e6e6;color:#111;border-radius:4px;"><span style="font-size:16px;font-weight:500;">{{ t.failAction }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;padding:2px 8px;border:1px solid #555;border-radius:3px;">Enter</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border:1px solid #4a4a4a;border-radius:4px;"><span style="font-size:14px;color:#c8c8c8;">{{ t.failSkip }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;padding:2px 8px;border:1px solid #5a5a5a;border-radius:3px;color:#c8c8c8;">Esc</span></div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="width:640px;display:flex;flex-direction:column;gap:28px;">
+          <div style="display:flex;flex-direction:column;gap:8px;"><span style="font-size:28px;font-weight:500;">{{ t.noRoll }}</span><span style="font-size:15px;color:#a3a3a3;">{{ emptySub }}</span></div>
+          <sc-if value="{{ scannerOff }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:14px;padding:14px 16px;background:#1f1f1f;border:1px solid #3a3a3a;border-left:none;border-radius:3px;">
+              <span style="width:8px;height:8px;margin-top:6px;flex:none;border-radius:4px;background:oklch(0.68 0.15 25);"></span>
+              <div style="display:flex;flex-direction:column;gap:4px;"><span style="font-size:15px;">{{ t.offTitle }}</span><span style="font-size:13px;color:#a3a3a3;">{{ t.offBody }}</span></div>
+            </div>
+          </sc-if>
+          <div style="display:flex;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;background:#e6e6e6;color:#111;border-radius:4px;font-size:15px;font-weight:500;">{{ t.newRoll }}<span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#555;">Ctrl+N</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;border:1px solid #4a4a4a;border-radius:4px;font-size:15px;">{{ t.openRoll }}<span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8a8a8a;">Ctrl+O</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;">{{ t.recent }}</span>
+            <sc-for list="{{ recent }}" as="r" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:24px;align-items:center;padding:10px 12px;border-bottom:1px solid #2a2a2a;font-size:14px;" style-hover="background:#222;">
+                <span>{{ r.name }}</span><span style="color:#8a8a8a;font-size:13px;">{{ r.meta }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8a8a8a;">{{ r.date }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ showPanel }}" hint-placeholder-val="{{ true }}">
+      <div style="width:350px;flex:none;display:flex;flex-direction:column;background:#1f1f1f;border-left:1px solid #2a2a2a;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid #2a2a2a;">
+          <div style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;">{{ t.correction }}</span><span style="font-size:16px;">{{ panelFrame }} <span style="font-size:13px;color:{{ panelStateColor }};">{{ panelState }}</span></span></div>
+          <div style="display:flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #3a3a3a;border-radius:3px;font-size:12px;color:#c8c8c8;opacity:{{ resetOpacity }};">{{ t.resetAuto }}<span style="font-family:'IBM Plex Mono',monospace;color:#8a8a8a;">0</span></div>
+        </div>
+        <div style="position:relative;display:flex;flex-direction:column;padding:6px 18px;opacity:{{ panelOpacity }};">
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:36px minmax(0,1fr) 74px;align-items:center;gap:10px;padding:8px 0;border-top:{{ r.sep }};opacity:{{ r.opacity }};">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;color:#cfcfcf;opacity:{{ lockedOpacity }};">{{ r.key }}</span>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0;opacity:{{ lockedOpacity }};">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="font-size:12px;color:#a3a3a3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7a7a7a;white-space:nowrap;">{{ r.keys }}</span></div>
+                <div style="display:flex;align-items:flex-end;gap:1px;height:12px;">
+                  <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="25"><span style="flex:1;height:{{ c.h }};background:{{ c.bg }};"></span></sc-for>
+                </div>
+                <sc-if value="{{ r.sub }}"><span style="font-size:11px;color:#7a7a7a;margin-top:-2px;">{{ r.sub }}</span></sc-if>
+              </div>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:500;text-align:right;color:{{ r.valColor }};line-height:1;">{{ r.val }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ panelLocked }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:18px;right:18px;top:50%;transform:translateY(-50%);padding:12px 14px;background:#141414;border:1px solid #3a3a3a;font-size:13px;color:#c8c8c8;text-align:center;">{{ t.panelLocked }}</div>
+          </sc-if>
+        </div>
+        <sc-if value="{{ isBw }}" hint-placeholder-val="{{ false }}">
+          <span style="padding:0 18px 6px;font-size:12px;color:#8a8a8a;">{{ t.bwNote }}</span>
+        </sc-if>
+        <sc-if value="{{ showFb }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px 18px;border-top:1px solid #2a2a2a;background:{{ fbBg }};box-shadow:{{ fbRing }};">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <span style="display:flex;align-items:center;gap:8px;font-size:14px;color:#e6e6e6;white-space:nowrap;"><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:14px;padding:0 4px;border:1px solid #cfcfcf;">FB</span>{{ fbText }}</span>
+              <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#c8c8c8;white-space:nowrap;">{{ fbAction }}<span style="font-family:'IBM Plex Mono',monospace;padding:0 5px;border:1px solid #4a4a4a;border-radius:3px;">B</span></span>
+            </div>
+            <span style="font-size:12px;color:#8a8a8a;line-height:1.4;">{{ fbSub }}</span>
+            <sc-if value="{{ fbChoose }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px;">
+                <sc-for list="{{ fbKeys }}" as="k" hint-placeholder-count="4">
+                  <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;"><span style="color:#c8c8c8;">{{ k.label }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#e0e0e0;padding:0 6px;border:1px solid #444;border-radius:3px;white-space:nowrap;">{{ k.key }}</span></div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:12px 18px;border-top:1px solid #2a2a2a;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:13px;color:#a3a3a3;">{{ t.crop }}</span><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#c8c8c8;">{{ t.edit }}<span style="font-family:'IBM Plex Mono',monospace;padding:0 5px;border:1px solid #4a4a4a;border-radius:3px;">A</span></span></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:15px;color:#e6e6e6;">{{ cropSummary }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-top:1px solid #2a2a2a;font-size:12px;color:#a3a3a3;">
+          <span style="font-family:'IBM Plex Mono',monospace;color:{{ expColor }};">{{ expGlyph }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ expText }}</span>
+        </div>
+        <div style="flex:1;"></div>
+        <sc-if value="{{ showPad }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:12px 18px 14px;border-top:1px solid #2a2a2a;background:#1b1b1b;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;">{{ t.numpad }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7a7a7a;">F1</span></div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:30px;gap:3px;">
+            <sc-for list="{{ pad }}" as="k" hint-placeholder-count="17">
+              <div style="grid-column:{{ k.col }};grid-row:{{ k.row }};display:flex;align-items:center;justify-content:space-between;padding:0 6px;background:#262626;border:1px solid #333;border-radius:3px;opacity:{{ k.opacity }};">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#7a7a7a;">{{ k.cap }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#e0e0e0;white-space:nowrap;">{{ k.fn }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showCrop }}" hint-placeholder-val="{{ false }}">
+      <div style="width:350px;flex:none;display:flex;flex-direction:column;gap:0;background:#1f1f1f;border-left:1px solid #2a2a2a;">
+        <div style="display:flex;flex-direction:column;gap:2px;padding:14px 18px;border-bottom:1px solid #2a2a2a;"><span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;">{{ t.cropMode }}</span><span style="font-size:16px;">{{ panelFrame }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:16px 18px;border-bottom:1px solid #2a2a2a;">
+          <span style="font-size:12px;color:#a3a3a3;">{{ t.aspect }}</span>
+          <div style="display:flex;border:1px solid #3a3a3a;border-radius:3px;overflow:hidden;"><div style="flex:1;padding:8px;text-align:center;background:#3a3a3a;font-size:13px;">{{ t.locked }}</div><div style="flex:1;padding:8px;text-align:center;font-size:13px;color:#b0b0b0;border-left:1px solid #3a3a3a;">{{ t.free }} <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7a7a7a;">F</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;border-bottom:1px solid #2a2a2a;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-size:12px;color:#a3a3a3;">{{ t.straighten }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7a7a7a;">[  ]  ±0,1°</span></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:500;">{{ t.cropAngle }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:16px 18px;border-bottom:1px solid #2a2a2a;font-size:13px;color:#a3a3a3;">
+          <span>{{ t.cropFrom }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px 18px;">
+          <sc-for list="{{ cropKeys }}" as="k" hint-placeholder-count="6">
+            <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;"><span style="color:#c8c8c8;">{{ k.label }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#e0e0e0;padding:1px 6px;border:1px solid #444;border-radius:3px;white-space:nowrap;">{{ k.key }}</span></div>
+          </sc-for>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="display:flex;gap:8px;padding:14px 18px;border-top:1px solid #2a2a2a;">
+          <div style="flex:1;display:flex;justify-content:center;gap:8px;padding:9px;background:#e6e6e6;color:#111;border-radius:3px;font-size:13px;font-weight:500;">{{ t.apply }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#555;">Enter</span></div>
+          <div style="flex:1;display:flex;justify-content:center;gap:8px;padding:9px;border:1px solid #444;border-radius:3px;font-size:13px;">{{ t.cancel }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;">Esc</span></div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ hasRoll }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:none;display:flex;flex-direction:column;gap:8px;padding:10px 20px 10px;background:#141414;border-top:1px solid #2a2a2a;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;white-space:nowrap;">{{ stripRange }}</span>
+        <div style="flex:1;display:flex;align-items:flex-end;gap:2px;height:8px;">
+          <sc-for list="{{ mini }}" as="m" hint-placeholder-count="36"><span style="flex:1;height:{{ m.h }};background:{{ m.bg }};"></span></sc-for>
+        </div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;white-space:nowrap;">{{ stripCount }}</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <sc-for list="{{ strip }}" as="f" hint-placeholder-count="18">
+          <div style="width:80px;flex:none;display:flex;flex-direction:column;gap:4px;opacity:{{ f.opacity }};">
+            <div style="position:relative;height:56px;box-sizing:border-box;border:{{ f.border }};background:{{ f.bg }};">
+              <sc-if value="{{ f.corrected }}"><span style="position:absolute;top:2px;left:2px;font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:13px;padding:0 3px;background:#e6e6e6;color:#111;">±</span></sc-if>
+              <sc-if value="{{ f.borrowed }}"><span style="position:absolute;top:2px;right:2px;font-family:'IBM Plex Mono',monospace;font-size:9px;line-height:12px;padding:0 3px;border:1px solid #cfcfcf;color:#e6e6e6;background:#141414;">FB</span></sc-if>
+              <sc-if value="{{ f.center }}"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:{{ f.centerColor }};">{{ f.centerText }}</span></sc-if>
+              <sc-if value="{{ f.scanning }}"><div style="position:absolute;left:3px;right:3px;bottom:3px;height:4px;background:#2e2e2e;"><div style="width:64%;height:100%;background:oklch(0.74 0.10 240);"></div></div></sc-if>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:14px;">
+              <span style="color:{{ f.numColor }};font-weight:{{ f.numWeight }};">{{ f.n }}</span>
+              <span style="color:{{ f.expColor }};">{{ f.expGlyph }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="height:30px;flex:none;display:flex;align-items:center;gap:20px;padding:0 20px;background:#101010;border-top:1px solid #242424;overflow:hidden;">
+    <sc-for list="{{ footKeys }}" as="k" hint-placeholder-count="8">
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#8a8a8a;white-space:nowrap;"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#d0d0d0;padding:0 5px;border:1px solid #3a3a3a;border-radius:3px;">{{ k.key }}</span>{{ k.label }}</span>
+    </sc-for>
+    <span style="flex:1;"></span>
+    <span style="font-size:12px;color:#6e6e6e;white-space:nowrap;">{{ t.autosave }}</span>
+  </div>
+
+  <sc-if value="{{ showModal }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(8,8,8,.72);display:flex;align-items:center;justify-content:center;">
+      <div style="width:1180px;height:800px;border:1px solid #3a3a3a;border-radius:4px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);">
+        <dc-import name="Roll Form" mode="settings" lang="{{ lang }}" confirm="{{ settingsConfirm }}" frames="{{ doneCount }}" hint-size="1180px,800px" style="width:100%;height:100%;"></dc-import>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;de&quot;,&quot;en&quot;],&quot;default&quot;:&quot;de&quot;,&quot;tsType&quot;:&quot;'de'|'en'&quot;},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;scan&quot;,&quot;idle&quot;,&quot;preview&quot;,&quot;grid&quot;,&quot;crop&quot;,&quot;failure&quot;,&quot;rescan&quot;,&quot;settings&quot;,&quot;empty&quot;,&quot;emptyoff&quot;],&quot;default&quot;:&quot;scan&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const AMBER='oklch(0.80 0.12 80)', RED='oklch(0.68 0.15 25)', GREEN='oklch(0.76 0.12 150)', BLUE='oklch(0.74 0.10 240)';
+const CORR={2:{D:1,C:0,M:-1,Y:0,G:0,S:2},3:{D:-2,C:1,M:0,Y:0,G:-1,S:2},5:{D:0,C:0,M:1,Y:2,G:0,S:2},8:{D:3,C:-1,M:-1,Y:0,G:1,S:3},11:{D:-1,C:0,M:0,Y:-1,G:0,S:2},13:{D:2,C:-1,M:0,Y:1,G:1,S:2},17:{D:1,C:1,M:0,Y:-2,G:0,S:3},20:{D:0,C:2,M:1,Y:0,G:0,S:1}};
+const AUTO={D:0,C:0,M:0,Y:0,G:0,S:2};
+const BORROWED=[1,9,22], EXPFAIL=[6];
+const V={
+  scan:{done:13,cur:14,curState:'scanning',sel:13,step:'raw',acc:BLUE,scanner:'busy',pending:[13]},
+  idle:{done:14,cur:15,curState:'empty',sel:14,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[14],bw:true},
+  preview:{done:14,cur:15,curState:'preview',sel:15,step:'previewWait',acc:AMBER,scanner:'ok',pending:[]},
+  grid:{done:24,cur:25,curState:'empty',sel:9,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[],grid:true},
+  crop:{done:14,cur:15,curState:'empty',sel:14,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[]},
+  failure:{done:13,cur:14,curState:'failed',sel:14,step:'fail',acc:RED,scanner:'err',pending:[]},
+  rescan:{done:36,cur:37,curState:'empty',sel:17,rescan:17,step:'rescan',acc:AMBER,scanner:'ok',pending:[]},
+  settings:{done:14,cur:15,curState:'empty',sel:14,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[14]},
+  settingsconfirm:{done:14,cur:15,curState:'empty',sel:14,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[14],confirm:true},
+  filmbase:{done:14,cur:15,curState:'empty',sel:9,step:'load',acc:'#e6e6e6',scanner:'ok',pending:[],fbChoose:true,fbCursor:10},
+  empty:{empty:true,scanner:'ok'},
+  emptyoff:{empty:true,scanner:'off'}
+};
+const T={
+  de:{grid:'Raster',rollSettings:'Rolleneinstellungen',frame:'Bild',correction:'Korrektur',auto:'Auto',corrected:'korrigiert',autoState:'Automatik',resetAuto:'Auf Automatik',
+    density:'Dichte',cyan:'Cyan',magenta:'Magenta',yellow:'Gelb',grad:'Gradation',sharp:'Schärfe',bwNote:'Schwarzweißnegativ: keine Farbtasten.',crop:'Ausschnitt',edit:'ändern',
+    numpad:'Ziffernblock',autosave:'Alles gespeichert · Export automatisch',previewWord:'VORSCHAU',previewSub:'Nur Lagekontrolle – noch nicht gescannt',previewLowres:'Niedrige Auflösung · nicht farbkorrigiert',previewNotSaved:'Wird nicht gespeichert',
+    scan:'Scannen',reload:'Neu einlegen / überspringen',cancelRescan:'Abbrechen, alten Scan behalten',rescanTitle:'Neuscan Bild 17',rescanKeep:'Korrektur und Ausschnitt bleiben erhalten',rescanMove:'Alter Rohscan wird verschoben nach',
+    gridTitle:'12er-Raster · Bilder 1–12',gridHint:'Pfeile wählen · Ziffernblock korrigiert · G / Enter zurück',
+    cropMode:'Ausschnitt & Gerade richten',aspect:'Seitenverhältnis',locked:'3:2 fest',free:'Frei',straighten:'Gerade richten',cropAngle:'−0,4°',cropFrom:'Ausschnitt von Bild 13 übernommen.',cropInfoL:'Bild 14 · Ausschnitt 4980 × 3320 px',cropInfoR:'Drehung −0,4°',apply:'Übernehmen',cancel:'Abbrechen',
+    failSlot:'Bild 14 · kein Rohscan',failTitle:'Scanner reagiert nicht',failBody:'Der Rohscan von Bild 14 hängt seit 2 Minuten. Das Bild bleibt eingelegt.',failSafe1:'Nur Bild 14 ist betroffen.',failSafe2:'Bilder 1–13, ihre Korrekturen und Exporte bleiben unverändert.',failAction:'Scanner zurücksetzen und Bild 14 neu scannen',failSkip:'Bild 14 leer lassen und weiter',
+    noRoll:'Keine Filmrolle geöffnet',emptyOk:'Scanner ist bereit. Lege eine neue Rolle an oder öffne eine vorhandene.',emptyOff:'Vorhandene Rollen kannst du auch ohne Scanner öffnen und korrigieren.',offTitle:'Kein Scanner gefunden',offBody:'Reflecta CrystalScan 7200 einschalten und per USB anschließen. Pro Scan erkennt ihn automatisch.',newRoll:'Neue Filmrolle',openRoll:'Filmrolle öffnen …',recent:'Zuletzt geöffnet',
+    panelLocked:'Korrektur ist nach dem Rohscan möglich',exported:'Exportiert 14:32 · TIFF, JPEG, DNG',pendingExp:'Export in 2 s · TIFF, JPEG, DNG',failedExp:'Export fehlgeschlagen · Ctrl+E wiederholen',noExp:'Noch kein Export',
+    steps:{raw:'Rohscan 2/2 … 64 %',load:'Bild einlegen',previewWait:'Enter = Scannen, Esc = neu einlegen',fail:'Scanner hängt – zurücksetzen',rescan:'Enter = Neu scannen, Esc = abbrechen',none:'Keine Filmrolle'},
+    scanner:{ok:'CrystalScan 7200 · bereit',busy:'CrystalScan 7200 · scannt',err:'CrystalScan 7200 · reagiert nicht',off:'Kein Scanner'},
+    foot:[['← →','Bild'],['Enter','Scannen'],['Esc','Neu einlegen'],['G','Raster'],['A','Ausschnitt'],['Ctrl+Z','Rückgängig'],['Ctrl+Shift+Z','Wiederholen'],['R','Bild neu scannen'],['F1','Tastenbelegung']],
+    padFn:{S0:'S −',S1:'S +',D0:'D −',D1:'D +',C1:'C +',M1:'M +',Y1:'Y +',C0:'C −',M0:'M −',Y0:'Y −',G0:'weich',G1:'hart',ent:'Scan',auto:'Automatik',grid:'Raster'},
+    cropKeys:[['Verschieben','Pfeile'],['Größe','Shift+Pfeile'],['Drehen 0,1°','[  ]'],['Frei / 3:2','F'],['Ausschnitt zurücksetzen','Entf']]},
+  en:{grid:'Grid',rollSettings:'Roll settings',frame:'Frame',correction:'Correction',auto:'Auto',corrected:'corrected',autoState:'auto correction',resetAuto:'Reset to auto correction',
+    density:'Density',cyan:'Cyan',magenta:'Magenta',yellow:'Yellow',grad:'Gradation',sharp:'Sharpness',bwNote:'Black-and-white negative: no colour keys.',crop:'Crop',edit:'change',
+    numpad:'Number pad',autosave:'All saved · export is automatic',previewWord:'PREVIEW',previewSub:'Position check only – not scanned yet',previewLowres:'Low resolution · not colour-corrected',previewNotSaved:'Not saved',
+    scan:'Scan',reload:'Reload / skip',cancelRescan:'Cancel, keep old scan',rescanTitle:'Rescan frame 17',rescanKeep:'Correction and crop are kept',rescanMove:'Old raw scan moves to',
+    gridTitle:'12-up grid · frames 1–12',gridHint:'Arrows select · number pad corrects · G / Enter back',
+    cropMode:'Crop & straighten',aspect:'Aspect ratio',locked:'3:2 locked',free:'Free',straighten:'Straighten',cropAngle:'−0.4°',cropFrom:'Crop carried over from frame 13.',cropInfoL:'Frame 14 · crop 4980 × 3320 px',cropInfoR:'Rotation −0.4°',apply:'Apply',cancel:'Cancel',
+    failSlot:'Frame 14 · no raw scan',failTitle:'Scanner not responding',failBody:'The raw scan of frame 14 has been stuck for 2 minutes. The frame stays loaded.',failSafe1:'Only frame 14 is affected.',failSafe2:'Frames 1–13, their corrections and exports are unchanged.',failAction:'Reset scanner and rescan frame 14',failSkip:'Leave frame 14 empty and continue',
+    noRoll:'No roll open',emptyOk:'Scanner is ready. Start a new roll or open an existing one.',emptyOff:'You can still open and correct existing rolls without a scanner.',offTitle:'No scanner found',offBody:'Switch on the Reflecta CrystalScan 7200 and connect it via USB. Pro Scan detects it automatically.',newRoll:'New roll',openRoll:'Open roll …',recent:'Recently opened',
+    panelLocked:'Correction is available after the raw scan',exported:'Exported 14:32 · TIFF, JPEG, DNG',pendingExp:'Exporting in 2 s · TIFF, JPEG, DNG',failedExp:'Export failed · Ctrl+E to retry',noExp:'Not exported yet',
+    steps:{raw:'Raw scan 2/2 … 64 %',load:'Load frame',previewWait:'Enter = Scan, Esc = Reload',fail:'Scanner hung – reset',rescan:'Enter = Rescan, Esc = Cancel',none:'No roll'},
+    scanner:{ok:'CrystalScan 7200 · ready',busy:'CrystalScan 7200 · scanning',err:'CrystalScan 7200 · not responding',off:'No scanner'},
+    foot:[['← →','Frame'],['Enter','Scan'],['Esc','Reload'],['G','Grid'],['A','Crop'],['Ctrl+Z','Undo'],['Ctrl+Shift+Z','Redo'],['R','Rescan frame'],['F1','Key legend']],
+    padFn:{S0:'S −',S1:'S +',D0:'D −',D1:'D +',C1:'C +',M1:'M +',Y1:'Y +',C0:'C −',M0:'M −',Y0:'Y −',G0:'soft',G1:'hard',ent:'Scan',auto:'Auto',grid:'Grid'},
+    cropKeys:[['Move','Arrows'],['Resize','Shift+Arrows'],['Rotate 0.1°','[  ]'],['Free / 3:2','F'],['Reset crop','Del']]}
+};
+const fmt=v=>v>0?'+'+v:v<0?'−'+Math.abs(v):'0';
+const tone=n=>{const l=[38,46,30,52,42,34,48,40,56,36,44,50][n%12];return `linear-gradient(160deg,#${(l+14).toString(16).repeat(3)} 0%,#${l.toString(16).repeat(3)} 60%,#${(l-10).toString(16).repeat(3)} 100%)`;};
+const isCorr=n=>CORR[n]&&Object.keys(AUTO).some(k=>CORR[n][k]!==AUTO[k]);
+class Component extends DCLogic {
+  renderVals(){
+    const lang=this.props.lang==='en'?'en':'de', t=T[lang], de=lang==='de';
+    const vk=V[this.props.view]?this.props.view:'scan', v=V[vk];
+    const bw=!!v.bw;
+    const frames=[];
+    const total=v.empty?0:v.curState==='scanning'?v.cur+1:v.cur;
+    for(let n=1;n<=total;n++){
+      let st=n<=v.done?'done':n===v.cur?v.curState:'empty';
+      if(v.rescan===n) st='preview';
+      const done=st==='done', sel=n===v.sel;
+      const exp=done?(EXPFAIL.includes(n)?'fail':v.pending.includes(n)?'pending':'ok'):null;
+      frames.push({n,st,done,sel,exp,corrected:done&&isCorr(n),borrowed:done&&BORROWED.includes(n)});
+    }
+    const expG={ok:'✓',pending:'…',fail:'!'}, expC={ok:GREEN,pending:'#9a9a9a',fail:RED};
+    const thumb=f=>({
+      n:f.n, corrected:f.corrected, borrowed:f.borrowed, opacity:(v.fbChoose&&!f.sel&&!(f.done&&!f.borrowed))?'0.3':'1',
+      border:f.sel?'2px solid #f0f0f0':(v.fbChoose&&f.n===v.fbCursor)?'2px dashed #f0f0f0':f.st==='preview'?`2px dashed ${AMBER}`:f.st==='failed'?`2px solid ${RED}`:f.st==='scanning'?`1px solid ${BLUE}`:f.st==='empty'?'1px dashed #383838':'1px solid #2e2e2e',
+      bg:f.done?tone(f.n):f.st==='preview'?'repeating-linear-gradient(90deg,#2e2e2e 0 6px,#262626 6px 12px)':f.st==='scanning'?'#222':'#161616',
+      center:['preview','failed','scanning','empty'].includes(f.st),
+      centerText:f.st==='preview'?(de?'VORSCH.':'PREV.'):f.st==='failed'?'✕':f.st==='scanning'?'64 %':'',
+      centerColor:f.st==='preview'?AMBER:f.st==='failed'?RED:'#c8c8c8',
+      scanning:f.st==='scanning',
+      numColor:f.sel?'#ffffff':f.st==='empty'?'#555':'#a8a8a8', numWeight:f.sel?'600':'400',
+      expGlyph:f.exp?expG[f.exp]:'', expColor:f.exp?expC[f.exp]:'#555'
+    });
+    const start=Math.max(0,Math.min(total-18,(v.sel||1)-9));
+    const strip=frames.slice(start,start+18).map(thumb);
+    const mini=frames.map(f=>({h:(f.n>start&&f.n<=start+18)?'8px':'4px',bg:f.st==='failed'?RED:f.st==='preview'?AMBER:f.st==='scanning'?BLUE:f.done?(f.sel?'#f0f0f0':'#6a6a6a'):'#2c2c2c'}));
+    const gridTiles=frames.slice(0,12).map(f=>{const c=CORR[f.n]||AUTO;const th=thumb(f);
+      return {...th,expGlyph:th.expGlyph,vals:`D${fmt(c.D).padStart(3)}  C${fmt(c.C).padStart(3)}  M${fmt(c.M).padStart(3)}  Y${fmt(c.Y).padStart(3)}  S ${c.S}`,valColor:f.corrected?'#e6e6e6':'#7a7a7a',border:f.sel?'2px solid #f0f0f0':(v.fbChoose&&f.n===v.fbCursor)?'2px dashed #f0f0f0':'1px solid #2e2e2e'};});
+    const selF=frames[(v.sel||1)-1]||{};
+    const c=CORR[v.sel]||AUTO;
+    const locked=selF.st==='preview'&&!v.rescan||selF.st==='failed';
+    const mk=(key,name,val,range,keys,dis,sep)=>{
+      if(range==='abs'){const cells=[];for(let i=0;i<=5;i++)cells.push({h:i===2?'12px':'7px',bg:i<=val&&val>0&&i>0?'#e6e6e6':i===2?'#8a8a8a':'#343434'});
+        return {key,name,val:locked?'—':String(val),valColor:locked?'#555':val!==2?'#ffffff':'#8a8a8a',cells,keys,opacity:'1',sep:'none'};}
+      const cells=[];for(let i=-range;i<=range;i++){const on=val!==0&&((val>0&&i>0&&i<=val)||(val<0&&i<0&&i>=val));cells.push({h:i===0?'12px':(Math.abs(i)%(range>3?4:1)===0?'9px':'6px'),bg:i===0?'#8a8a8a':on?'#e6e6e6':'#343434'});}
+      return {key,name,val:dis||locked?'—':fmt(val),valColor:dis||locked?'#555':val!==0?'#ffffff':'#8a8a8a',cells,keys,opacity:dis?'0.35':'1',sep:sep?'1px solid #2a2a2a':'none'};
+    };
+    const rows=[mk('D',t.density,c.D,12,'Num + / −',false,false),mk('C',t.cyan,c.C,12,'Num 7 / 4',bw),mk('M',t.magenta,c.M,12,'Num 8 / 5',bw),mk('Y',t.yellow,c.Y,12,'Num 9 / 6',bw),mk('G',t.grad+(de?' · weich ↔ hart':' · soft ↔ hard'),c.G,3,'',false,true),mk('S',t.sharp,c.S,'abs','Num × / ÷',false)];
+    const P=t.padFn;
+    const pad=[['1','1','Num',''],['2','1','÷',P.S0],['3','1','×',P.S1],['4','1','−',P.D0],
+      ['1','2','7',P.C1,1],['2','2','8',P.M1,1],['3','2','9',P.Y1,1],['4','2 / span 2','+',P.D1],
+      ['1','3','4',P.C0,1],['2','3','5',P.M0,1],['3','3','6',P.Y0,1],
+      ['1','4','1',P.G0],['2','4','2',''],['3','4','3',P.G1],['4','4 / span 2','↵',P.ent],
+      ['1 / span 2','5','0',P.auto],['3','5',',',P.grid]].map(([col,row,cap,fn,color])=>({col,row,cap,fn,opacity:(bw&&color)||fn===''?'0.35':'1'}));
+    const corrSel=isCorr(v.sel);
+    const rollName=v.empty?'—':bw?'2026-10-21 HP5 Berlin':'2026-11-03 Portra Lissabon';
+    const rollMeta=v.empty?'':bw?(de?'Ilford HP5 Plus · Schwarzweißnegativ · ISO 400 Push +1':'Ilford HP5 Plus · black-and-white negative · ISO 400 push +1'):(de?'Kodak Portra 400 · Farbnegativ · Frontier-Look':'Kodak Portra 400 · colour negative · Frontier look');
+    const stepFrameN=v.step==='raw'?14:v.step==='load'?v.cur:v.step==='previewWait'?15:v.step==='fail'?14:v.step==='rescan'?17:null;
+    const fr=t.frame;
+    return {
+      t, lang, rollName, rollMeta, hasRoll:!v.empty, isEmpty:!!v.empty, scannerOff:v.scanner==='off',
+      accColor:v.empty?(v.scanner==='off'?RED:GREEN):v.acc, stepText:t.steps[v.empty?'none':v.step], stepFrame:stepFrameN?`${fr} ${stepFrameN}`:'',
+      showProgress:v.step==='raw', scannerText:t.scanner[v.scanner], scannerColor:{ok:GREEN,busy:BLUE,err:RED,off:RED}[v.scanner],
+      gridBtnBorder:v.grid?'#cfcfcf':'#3a3a3a', langDE:de?'DE':'de', langEN:de?'en':'EN',
+      showImage:['scan','idle','settings','settingsconfirm','filmbase'].includes(vk), showPreview:vk==='preview'||vk==='rescan', showRescanCard:vk==='rescan', showGrid:vk==='grid', showCrop:vk==='crop', showFail:vk==='failure',
+      showPanel:!v.empty&&vk!=='crop', showModal:vk==='settings'||vk==='settingsconfirm', settingsConfirm:!!v.confirm, doneCount:v.done||0,
+      showFb:!!selF.borrowed&&!locked, fbChoose:!!v.fbChoose, showPad:!v.fbChoose, fbBg:v.fbChoose?'#262626':'transparent', fbRing:v.fbChoose?'inset 0 0 0 1px #6a6a6a':'none',
+      fbText:de?`Filmgrund von Bild ${v.fbChoose?v.fbCursor:8}`:`Film base from frame ${v.fbChoose?v.fbCursor:8}`,
+      fbAction:v.fbChoose?(de?'wählen':'choosing'):(de?'ändern':'change'),
+      fbSub:v.fbChoose?(de?'Bild wählen oder im Streifen anklicken. Abgeblendet: kein klarer Film.':'Pick a frame or click it in the strip. Dimmed: no clear film.'):(de?`Automatisch gewählt – Bild ${v.sel} zeigt keinen klaren Film.`:`Chosen automatically – frame ${v.sel} shows no clear film.`),
+      fbKeys:(de?[['Bild wählen','← →'],['Übernehmen','Enter'],['Automatisch wählen','Entf'],['Abbrechen','Esc']]:[['Pick frame','← →'],['Apply','Enter'],['Choose automatically','Del'],['Cancel','Esc']]).map(([label,key])=>({label,key})), isBw:bw,
+      imgLabel:v.fbChoose?(de?`Bild ${v.sel} · Vorschau mit Filmgrund von Bild ${v.fbCursor}`:`Frame ${v.sel} · preview with film base from frame ${v.fbCursor}`):de?`Bild ${v.sel} · Rohscan · ${corrSel?'korrigiert':'Automatik'} · farbverwaltet (Monitorprofil)`:`Frame ${v.sel} · raw scan · ${corrSel?'corrected':'auto correction'} · colour-managed (monitor profile)`,
+      imgInfoL:`${t.frame} ${v.sel} · 3600 dpi · 5100 × 3400 px`, imgInfoR:de?'Ausschnitt 3:2 · −0,4°':'Crop 3:2 · −0.4°',
+      previewTitle:vk==='rescan'?(de?'Bild 17 · Neuscan':'Frame 17 · rescan'):(de?'Bild 15':'Frame 15'),
+      previewYes:vk==='rescan'?(de?'Neu scannen':'Rescan'):t.scan, previewNo:vk==='rescan'?t.cancelRescan:t.reload,
+      gridTiles, strip, mini, stripRange:`${start+1}–${Math.min(total,start+18)}`, stripCount:`${v.done||0} ${de?'Bilder':'frames'}`,
+      rows:rows.map(r=>({...r,keys:r.keys||'Num 3 / 1',name:r.key==='G'?t.grad:r.name,sub:r.key==='G'?(de?'weich ↔ hart':'soft ↔ hard'):''})), pad, panelLocked:locked, panelOpacity:'1', lockedOpacity:locked?'0.3':'1',
+      panelFrame:`${fr} ${v.sel||''}`, panelState:locked?'':corrSel?'· '+t.corrected:'· '+t.autoState, panelStateColor:corrSel?'#e6e6e6':'#8a8a8a', resetOpacity:corrSel?'1':'0.4',
+      cropSummary:locked?'—':(de?'3:2 fest · −0,4°':'3:2 locked · −0.4°'),
+      expGlyph:selF.exp?expG[selF.exp]:'–', expColor:selF.exp?expC[selF.exp]:'#6e6e6e', expText:selF.exp==='ok'?t.exported:selF.exp==='pending'?t.pendingExp:selF.exp==='fail'?t.failedExp:t.noExp,
+      cropKeys:t.cropKeys.map(([label,key])=>({label,key})),
+      footKeys:(v.empty?t.foot.slice(8):t.foot).map(([key,label])=>({key,label})),
+      emptySub:v.scanner==='off'?t.emptyOff:t.emptyOk,
+      recent:[{name:'2026-10-21 HP5 Berlin',meta:de?'36 Bilder · Schwarzweißnegativ':'36 frames · black-and-white negative',date:'21.10.2026'},{name:'2026-09-14 Gold Ostsee',meta:de?'37 Bilder · Farbnegativ':'37 frames · colour negative',date:'14.09.2026'},{name:'2026-08-30 Velvia Alpen',meta:de?'24 Bilder · Farbpositiv':'24 frames · colour positive',date:'30.08.2026'}]
+    };
+  }
+}
+</script>
+</body>
+</html>

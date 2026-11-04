@@ -1,0 +1,90 @@
+--- a/backend/pieusb_specific.c
++++ b/backend/pieusb_specific.c
+@@ -66,6 +66,7 @@
+ #include "pieusb_scancmd.h"
+ #include "pieusb_buffer.h"
+ #include "pieusb_specific.h"
++#include "pieusb_live.h"
+ 
+ /* Pieusb specific */
+ 
+@@ -2194,6 +2195,8 @@
+     SANE_Byte *linebuf, *lboff;
+     SANE_Bool compress;
+     int n, k, i;
++    int live_rows = 0;
++    const char *live_path = getenv("NEGATIVSTUDIO_LIVE_PATH");
+ 
+     switch (scanner->mode.colorFormat) {
+         case SCAN_COLOR_FORMAT_PIXEL: /* Pixel */
+@@ -2297,6 +2300,7 @@
+         }
+         free(linebuf);
+         lines_remaining -= lines; /* Note: excess discarded */
++        live_rows = negativstudio_live_snapshot(&scanner->buffer, live_path, live_rows);
+         DBG (DBG_warning, "NEGATIVSTUDIO acquisition %d\n", 100 * (lines_to_read - lines_remaining) / lines_to_read);
+         DBG(DBG_info_sane, "sanei_pieusb_get_scan_data(): reading lines: remaining %d\n", lines_remaining);
+     }
+--- /dev/null
++++ b/backend/pieusb_live.h
+@@ -0,0 +1,60 @@
++/* Negativstudio live acquisition snapshots.
++ * GPL-2.0-or-later with the same SANE linking exception as pieusb_specific.c.
++ * Read-only access to complete RGB rows. Snapshot failures never fail a scan.
++ */
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <limits.h>
++#include <stddef.h>
++
++static int
++negativstudio_live_snapshot(struct Pieusb_Read_Buffer *b, const char *path, int previous)
++{
++    int channels[3], c, complete, step, width, height, rows, x, y, fd, failed = 0;
++    size_t plane;
++    char temporary[4096];
++    unsigned char *row;
++    FILE *out;
++    if (!path || !*path || !b->data || !b->p_write || b->depth != 16 ||
++        b->width <= 0 || b->height <= 0) return previous;
++    channels[0] = b->color_index_red;
++    channels[1] = b->color_index_green;
++    channels[2] = b->color_index_blue;
++    plane = (size_t)b->width * b->height;
++    complete = b->height;
++    for (c = 0; c < 3; c++) {
++        ptrdiff_t available;
++        if (channels[c] < 0 || channels[c] >= b->colors) return previous;
++        available = b->p_write[channels[c]] - (b->data + channels[c] * plane);
++        if (available < 0 || (size_t)available > plane) return previous;
++        if (available / b->width < complete) complete = available / b->width;
++    }
++    step = ((b->width > b->height ? b->width : b->height) + 999) / 1000;
++    if (complete <= previous || (complete < b->height && complete - previous < step * 8)) return previous;
++    width = (b->width + step - 1) / step;
++    height = (b->height + step - 1) / step;
++    rows = (complete + step - 1) / step;
++    if (snprintf(temporary, sizeof temporary, "%s.XXXXXX", path) >= (int)sizeof temporary) return previous;
++    row = malloc((size_t)width * 6);
++    if (!row) return previous;
++    fd = mkstemp(temporary);
++    if (fd < 0) { free(row); return previous; }
++    out = fdopen(fd, "wb");
++    if (!out) { close(fd); unlink(temporary); free(row); return previous; }
++    if (fprintf(out, "P6\n# NSLIVE %d\n%d %d\n65535\n", rows, width, height) < 0) failed = 1;
++    for (y = 0; y < complete && !failed; y += step) {
++        for (x = 0; x < width; x++) {
++            for (c = 0; c < 3; c++) {
++                unsigned int value = b->data[channels[c] * plane + (size_t)y * b->width + x * step];
++                row[x*6+c*2] = (value >> 8) & 255;
++                row[x*6+c*2+1] = value & 255;
++            }
++        }
++        if (fwrite(row, 6, width, out) != (size_t)width) failed = 1;
++    }
++    if (fclose(out)) failed = 1;
++    free(row);
++    if (failed || rename(temporary, path)) { unlink(temporary); return previous; }
++    return complete;
++}

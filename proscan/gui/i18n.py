@@ -1,0 +1,156 @@
+"""German and English UI strings; labels follow GLOSSARY.md."""
+import json
+from pathlib import Path
+
+SETTINGS = Path.home() / '.config' / 'proscan' / 'einstellungen.json'
+
+STRINGS = {
+    'de': {
+        'frame': 'Bild', 'frames': 'Bilder', 'grid': 'Raster', 'roll_settings': 'Rolleneinstellungen',
+        'correction': 'Korrektur', 'corrected': 'korrigiert', 'auto': 'Automatik', 'reset_auto': 'Auf Automatik',
+        'density': 'Dichte', 'cyan': 'Cyan', 'magenta': 'Magenta', 'yellow': 'Gelb', 'gradation': 'Gradation',
+        'soft_hard': 'weich ↔ hart', 'sharpness': 'Schärfe', 'bw_note': 'Schwarzweißnegativ: keine Farbtasten.',
+        'crop': 'Ausschnitt', 'change': 'ändern', 'numpad': 'Ziffernblock',
+        'autosave': 'Alles gespeichert · Export automatisch',
+        'preview': 'VORSCHAU', 'preview_sub': 'Nur Lagekontrolle – noch nicht gescannt',
+        'preview_lowres': 'Niedrige Auflösung · nicht farbkorrigiert', 'preview_not_saved': 'Wird nicht gespeichert',
+        'scan': 'Scannen', 'reload': 'Neu einlegen / überspringen', 'rescan': 'Neu scannen',
+        'cancel_rescan': 'Abbrechen, alten Scan behalten',
+        'grid_title': '12er-Raster · Bilder {a}–{b}', 'grid_hint': 'Pfeile wählen · Ziffernblock korrigiert · G / Enter zurück',
+        'crop_mode': 'Ausschnitt & Gerade richten', 'aspect': 'Seitenverhältnis', 'locked': '3:2 fest', 'free': 'Frei',
+        'straighten': 'Gerade richten', 'crop_from': 'Neue Bilder übernehmen den Ausschnitt des vorigen Bildes.',
+        'apply': 'Übernehmen', 'cancel': 'Abbrechen',
+        'crop_keys': [('Verschieben', 'Pfeile'), ('Größe', 'Shift+Pfeile'), ('Drehen 0,1°', '[  ]'),
+                      ('Frei / 3:2', 'F'), ('Ausschnitt zurücksetzen', 'Entf')],
+        'fail_title': 'Scanner reagiert nicht', 'fail_body': 'Der Rohscan von Bild {n} ist fehlgeschlagen: {reason}',
+        'fail_safe1': 'Nur Bild {n} ist betroffen.', 'fail_safe2': 'Alle anderen Bilder, ihre Korrekturen und Exporte bleiben unverändert.',
+        'fail_action': 'Scanner neu suchen und Bild {n} neu scannen', 'fail_skip': 'Bild {n} leer lassen und weiter',
+        'no_roll': 'Keine Filmrolle geöffnet', 'empty_ok': 'Scanner ist bereit. Lege eine neue Rolle an oder öffne eine vorhandene.',
+        'empty_off': 'Vorhandene Rollen kannst du auch ohne Scanner öffnen und korrigieren.',
+        'off_title': 'Kein Scanner gefunden',
+        'off_body': 'Reflecta CrystalScan 7200 einschalten und per USB anschließen. Pro Scan erkennt ihn automatisch.',
+        'new_roll': 'Neue Filmrolle', 'open_roll': 'Filmrolle öffnen …', 'recent': 'Zuletzt geöffnet',
+        'panel_locked': 'Korrektur ist nach dem Rohscan möglich',
+        'exported': 'Exportiert {time} · {formats}', 'export_pending': 'Export läuft · {formats}',
+        'export_failed': 'Export fehlgeschlagen · Ctrl+E wiederholen', 'no_export': 'Noch kein Export',
+        'step_load': 'Bild einlegen · Enter = Vorschau', 'step_preview_run': 'Vorschau läuft …',
+        'step_preview': 'Enter = Scannen, Esc = neu einlegen', 'step_raw': 'Rohscan läuft …',
+        'step_fail': 'Scanner hängt – neu versuchen', 'step_rescan': 'Bild {n} zum Neuscan einlegen · Enter = Vorschau',
+        'step_rescan_preview': 'Enter = Neu scannen, Esc = abbrechen', 'step_none': 'Keine Filmrolle',
+        'scanner_ok': 'CrystalScan 7200 · bereit', 'scanner_busy': 'CrystalScan 7200 · scannt',
+        'scanner_err': 'CrystalScan 7200 · reagiert nicht', 'scanner_off': 'Kein Scanner',
+        'foot': [('← →', 'Bild'), ('Enter', 'Scannen'), ('Esc', 'Neu einlegen'), ('G', 'Raster'), ('A', 'Ausschnitt'),
+                 ('Ctrl+Z', 'Rückgängig'), ('Ctrl+Shift+Z', 'Wiederholen'), ('R', 'Bild neu scannen'), ('F1', 'Tastenbelegung')],
+        'pad': {'S-': 'S −', 'S+': 'S +', 'D-': 'D −', 'D+': 'D +', 'C+': 'C +', 'M+': 'M +', 'Y+': 'Y +',
+                'C-': 'C −', 'M-': 'M −', 'Y-': 'Y −', 'G-': 'weich', 'G+': 'hart', 'scan': 'Scan', 'auto': 'Automatik',
+                'grid': 'Raster'},
+        'legend_title': 'Tastenbelegung', 'other_keys': 'Weitere Tasten',
+        'legend_keys': [('← →', 'Vorheriges / nächstes Bild'), ('Enter', 'Vorschau → Rohscan'), ('Esc', 'Neu einlegen / überspringen'),
+                        ('G', '12er-Raster ein/aus'), ('A', 'Ausschnitt & Gerade richten'), ('R', 'Bild neu scannen'),
+                        ('Ctrl+Z', 'Rückgängig (pro Bild)'), ('Ctrl+Shift+Z', 'Wiederholen'), ('Ctrl+E', 'Export wiederholen'),
+                        ('Ctrl+,', 'Rolleneinstellungen'), ('F1', 'Tastenbelegung')],
+        # roll form
+        'reopen': 'Vorhandene Filmrolle öffnen', 'other_folder': 'Anderen Ordner wählen …',
+        'banner_last': 'Einstellungen von der letzten Rolle „{name}“ übernommen.',
+        'banner_settings': 'Gilt für alle Bilder dieser Rolle. Korrekturen pro Bild bleiben erhalten.',
+        'details': 'Rollenangaben', 'name': 'Name', 'film_type': 'Filmtyp',
+        'colour_negative': 'Farbnegativ', 'bw_negative': 'Schwarzweißnegativ', 'colour_positive': 'Farbpositiv',
+        'film_stock': 'Filmmaterial', 'iso': 'ISO', 'push_pull': 'Push/Pull', 'camera': 'Kamera', 'lens': 'Objektiv',
+        'date': 'Datum', 'developed_by': 'Entwickelt von', 'notes': 'Notizen', 'optional': 'optional',
+        'per_roll': 'Einstellungen für diese Rolle', 'look': 'Bildstil', 'frontier': 'Frontier-Look', 'faithful': 'Filmgetreu',
+        'multi': 'Mehrfachbelichtung', 'multi_hint': 'Mehr Zeichnung in den Schatten, Rohscan dauert länger.',
+        'export': 'Export', 'dng': 'Raw-Export (DNG)', 'dng_clean': 'staubbereinigt', 'dng_raw': 'unberührt',
+        'bw_ir': 'Bei Schwarzweißnegativ nicht möglich: Das Silber im Film lässt kein Infrarot durch, deshalb gibt es keine Staubbereinigung.',
+        'export_folder': 'Exportordner', 'choose': 'Ändern …',
+        'foot_note': 'Alles wird sofort gespeichert. Export läuft automatisch.',
+        'foot_settings': 'Änderungen gelten sofort.', 'create': 'Rolle anlegen und Bild 1 einlegen', 'close': 'Schließen',
+        'not_yet': 'noch nicht verfügbar',
+        'cf_title': 'Filmtyp ändern?', 'cf_count': 'Bilder werden neu entwickelt',
+        'cf_keep': 'Korrekturen und Ausschnitte bleiben erhalten.', 'cf_action': 'Filmtyp ändern',
+        'error': 'Fehler',
+    },
+    'en': {
+        'frame': 'Frame', 'frames': 'frames', 'grid': 'Grid', 'roll_settings': 'Roll settings',
+        'correction': 'Correction', 'corrected': 'corrected', 'auto': 'auto correction', 'reset_auto': 'Reset to auto correction',
+        'density': 'Density', 'cyan': 'Cyan', 'magenta': 'Magenta', 'yellow': 'Yellow', 'gradation': 'Gradation',
+        'soft_hard': 'soft ↔ hard', 'sharpness': 'Sharpness', 'bw_note': 'Black-and-white negative: no colour keys.',
+        'crop': 'Crop', 'change': 'change', 'numpad': 'Number pad',
+        'autosave': 'All saved · export is automatic',
+        'preview': 'PREVIEW', 'preview_sub': 'Position check only – not scanned yet',
+        'preview_lowres': 'Low resolution · not colour-corrected', 'preview_not_saved': 'Not saved',
+        'scan': 'Scan', 'reload': 'Reload / skip', 'rescan': 'Rescan', 'cancel_rescan': 'Cancel, keep old scan',
+        'grid_title': '12-up grid · frames {a}–{b}', 'grid_hint': 'Arrows select · number pad corrects · G / Enter back',
+        'crop_mode': 'Crop & straighten', 'aspect': 'Aspect ratio', 'locked': '3:2 locked', 'free': 'Free',
+        'straighten': 'Straighten', 'crop_from': 'New frames take over the previous frame’s crop.',
+        'apply': 'Apply', 'cancel': 'Cancel',
+        'crop_keys': [('Move', 'Arrows'), ('Resize', 'Shift+Arrows'), ('Rotate 0.1°', '[  ]'), ('Free / 3:2', 'F'), ('Reset crop', 'Del')],
+        'fail_title': 'Scanner not responding', 'fail_body': 'The raw scan of frame {n} failed: {reason}',
+        'fail_safe1': 'Only frame {n} is affected.', 'fail_safe2': 'All other frames, their corrections and exports are unchanged.',
+        'fail_action': 'Find scanner again and rescan frame {n}', 'fail_skip': 'Leave frame {n} empty and continue',
+        'no_roll': 'No roll open', 'empty_ok': 'Scanner is ready. Start a new roll or open an existing one.',
+        'empty_off': 'You can still open and correct existing rolls without a scanner.', 'off_title': 'No scanner found',
+        'off_body': 'Switch on the Reflecta CrystalScan 7200 and connect it via USB. Pro Scan detects it automatically.',
+        'new_roll': 'New roll', 'open_roll': 'Open roll …', 'recent': 'Recently opened',
+        'panel_locked': 'Correction is available after the raw scan',
+        'exported': 'Exported {time} · {formats}', 'export_pending': 'Exporting · {formats}',
+        'export_failed': 'Export failed · Ctrl+E to retry', 'no_export': 'Not exported yet',
+        'step_load': 'Load frame · Enter = preview', 'step_preview_run': 'Preview running …',
+        'step_preview': 'Enter = Scan, Esc = Reload', 'step_raw': 'Raw scan running …',
+        'step_fail': 'Scanner hung – try again', 'step_rescan': 'Load frame {n} to rescan · Enter = preview',
+        'step_rescan_preview': 'Enter = Rescan, Esc = Cancel', 'step_none': 'No roll',
+        'scanner_ok': 'CrystalScan 7200 · ready', 'scanner_busy': 'CrystalScan 7200 · scanning',
+        'scanner_err': 'CrystalScan 7200 · not responding', 'scanner_off': 'No scanner',
+        'foot': [('← →', 'Frame'), ('Enter', 'Scan'), ('Esc', 'Reload'), ('G', 'Grid'), ('A', 'Crop'), ('Ctrl+Z', 'Undo'),
+                 ('Ctrl+Shift+Z', 'Redo'), ('R', 'Rescan frame'), ('F1', 'Key legend')],
+        'pad': {'S-': 'S −', 'S+': 'S +', 'D-': 'D −', 'D+': 'D +', 'C+': 'C +', 'M+': 'M +', 'Y+': 'Y +',
+                'C-': 'C −', 'M-': 'M −', 'Y-': 'Y −', 'G-': 'soft', 'G+': 'hard', 'scan': 'Scan', 'auto': 'Auto',
+                'grid': 'Grid'},
+        'legend_title': 'Key legend', 'other_keys': 'Other keys',
+        'legend_keys': [('← →', 'Previous / next frame'), ('Enter', 'Preview → raw scan'), ('Esc', 'Reload / skip'),
+                        ('G', '12-up grid on/off'), ('A', 'Crop & straighten'), ('R', 'Rescan frame'),
+                        ('Ctrl+Z', 'Undo (per frame)'), ('Ctrl+Shift+Z', 'Redo'), ('Ctrl+E', 'Retry export'),
+                        ('Ctrl+,', 'Roll settings'), ('F1', 'Key legend')],
+        'reopen': 'Open existing roll', 'other_folder': 'Choose another folder …',
+        'banner_last': 'Settings taken over from the last roll “{name}”.',
+        'banner_settings': 'Applies to every frame of this roll. Per-frame corrections are kept.',
+        'details': 'Roll details', 'name': 'Name', 'film_type': 'Film type',
+        'colour_negative': 'Colour negative', 'bw_negative': 'Black-and-white negative', 'colour_positive': 'Colour positive',
+        'film_stock': 'Film stock', 'iso': 'ISO', 'push_pull': 'Push/pull', 'camera': 'Camera', 'lens': 'Lens',
+        'date': 'Date', 'developed_by': 'Developed by', 'notes': 'Notes', 'optional': 'optional',
+        'per_roll': 'Settings for this roll', 'look': 'Look', 'frontier': 'Frontier look', 'faithful': 'Faithful look',
+        'multi': 'Multi-exposure', 'multi_hint': 'More shadow detail, raw scan takes longer.',
+        'export': 'Export', 'dng': 'Raw export (DNG)', 'dng_clean': 'dust-cleaned', 'dng_raw': 'untouched',
+        'bw_ir': 'Not available for black-and-white negatives: the silver in the film blocks infrared, so there is no dust cleaning.',
+        'export_folder': 'Export folder', 'choose': 'Change …',
+        'foot_note': 'Everything saves immediately. Export runs automatically.',
+        'foot_settings': 'Changes apply immediately.', 'create': 'Create roll and load frame 1', 'close': 'Close',
+        'not_yet': 'not available yet',
+        'cf_title': 'Change film type?', 'cf_count': 'frames will be re-developed',
+        'cf_keep': 'Corrections and crops are kept.', 'cf_action': 'Change film type',
+        'error': 'Error',
+    },
+}
+
+
+def _load():
+    try:
+        return json.loads(SETTINGS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+language = _load().get('language')
+if language not in STRINGS:
+    language = 'de'
+
+
+def set_language(value):
+    global language
+    language = value
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS.write_text(json.dumps({**_load(), 'language': value}))
+
+
+def tr(key, **kw):
+    text = STRINGS[language][key]
+    return text.format(**kw) if kw else text

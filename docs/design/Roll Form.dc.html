@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"></helmet>
+<div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;background:#1c1c1c;color:#e6e6e6;font-family:'IBM Plex Sans',sans-serif;font-size:14px;box-sizing:border-box;">
+  <sc-if value="{{ isStart }}" hint-placeholder-val="{{ true }}">
+    <div style="height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:#121212;border-bottom:1px solid #2a2a2a;">
+      <div style="display:flex;align-items:center;gap:16px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;color:#8a8a8a;">PRO SCAN</span><span style="color:#e6e6e6;font-size:15px;">{{ t.newRoll }}</span></div>
+      <div style="display:flex;align-items:center;gap:20px;font-size:13px;color:#a3a3a3;"><span style="display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:4px;background:oklch(0.76 0.12 150);"></span>{{ t.scannerOk }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;"><span style="color:#e6e6e6;">DE</span> · EN</span></div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid #2e2e2e;">
+      <div style="display:flex;flex-direction:column;gap:2px;"><span style="font-size:18px;font-weight:500;">{{ t.settingsTitle }}</span><span style="font-size:13px;color:#8a8a8a;">{{ rollName }} · {{ framesText }}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#a3a3a3;">{{ t.close }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 6px;border:1px solid #4a4a4a;border-radius:3px;color:#d0d0d0;">Esc</span></div>
+    </div>
+  </sc-if>
+  <div style="flex:1;min-height:0;display:flex;">
+    <sc-if value="{{ isStart }}" hint-placeholder-val="{{ true }}">
+      <div style="width:340px;flex:none;border-right:1px solid #2a2a2a;background:#181818;padding:28px 24px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;">
+        <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;">{{ t.reopen }}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <sc-for list="{{ recent }}" as="r" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:3px;background:#1f1f1f;" style-hover="background:#262626;">
+              <span style="font-size:14px;color:#e0e0e0;">{{ r.name }}</span>
+              <span style="font-size:12px;color:#8a8a8a;">{{ r.meta }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #3a3a3a;border-radius:3px;font-size:13px;color:#c8c8c8;"><span>{{ t.openFolder }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;">Ctrl+O</span></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6e6e6e;">~/Bilder/Pro Scan/</span>
+      </div>
+    </sc-if>
+    <div style="flex:1;min-width:0;padding:28px 36px;display:flex;flex-direction:column;gap:20px;box-sizing:border-box;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#232323;border:1px solid #303030;border-radius:3px;font-size:13px;color:#b8b8b8;"><span style="font-family:'IBM Plex Mono',monospace;color:#8a8a8a;">i</span><span>{{ t.banner }}</span></div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;">
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;padding-bottom:6px;border-bottom:1px solid #2e2e2e;">{{ t.details }}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.name }} <span style="color:#d0d0d0;">*</span></span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #6a6a6a;border-radius:3px;">{{ rollName }}<span style="width:1px;height:18px;background:#e6e6e6;margin-left:1px;"></span></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.filmType }} <span style="color:#d0d0d0;">*</span></span>
+            <div style="display:flex;gap:1px;background:#3a3a3a;border:1px solid #3a3a3a;border-radius:3px;overflow:hidden;">
+              <sc-for list="{{ ftItems }}" as="f" hint-placeholder-count="3">
+                <div style="flex:1;padding:8px 10px;background:{{ f.bg }};color:{{ f.color }};text-align:center;font-size:13px;">{{ f.label }}</div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 120px;gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.stock }}</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;">{{ stockVal }}</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">ISO</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;font-family:'IBM Plex Mono',monospace;">400</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.pushPull }}</span><div style="height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;font-family:'IBM Plex Mono',monospace;">{{ pushVal }}<span style="color:#7a7a7a;font-size:10px;">▼</span></div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;">
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.camera }}</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;">Nikon FM2</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.lens }}</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;">Nikkor 50 mm f/1.8</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.date }}</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;font-family:'IBM Plex Mono',monospace;">{{ t.dateVal }}</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.dev }}</span><div style="height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;color:#6a6a6a;">{{ t.devPh }}</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.notes }}</span><div style="height:64px;padding:8px 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;color:#6a6a6a;box-sizing:border-box;">—</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px;">
+          <span style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a;padding-bottom:6px;border-bottom:1px solid #2e2e2e;">{{ t.perRoll }}</span>
+          <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.look }}</span>
+            <div style="display:flex;border:1px solid #3a3a3a;border-radius:3px;overflow:hidden;width:max-content;">
+              <div style="padding:8px 16px;background:#3a3a3a;color:#f0f0f0;font-size:13px;">{{ t.frontier }}</div>
+              <div style="padding:8px 16px;color:#b0b0b0;font-size:13px;border-left:1px solid #3a3a3a;">{{ t.faithful }}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:10px;"><span style="width:16px;height:16px;flex:none;margin-top:2px;border-radius:2px;background:#d8d8d8;color:#111;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:600;">✓</span><div style="display:flex;flex-direction:column;gap:2px;"><span>{{ t.multi }}</span><span style="font-size:12px;color:#8a8a8a;">{{ t.multiHint }}</span></div></div>
+          <div style="display:flex;flex-direction:column;gap:12px;padding-top:4px;">
+            <span style="font-size:12px;color:#a3a3a3;">{{ t.exportFormats }}</span>
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:16px;height:16px;flex:none;border-radius:2px;background:#d8d8d8;color:#111;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:600;">✓</span><span style="width:150px;">TIFF 16 Bit</span><div style="height:30px;width:160px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;font-size:13px;">Adobe RGB<span style="color:#7a7a7a;font-size:10px;">▼</span></div><span style="font-size:12px;color:#6e6e6e;">sRGB · Adobe RGB · ProPhoto</span></div>
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:16px;height:16px;flex:none;border-radius:2px;background:#d8d8d8;color:#111;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:600;">✓</span><span style="width:150px;">JPEG</span><span style="font-size:13px;color:#8a8a8a;">sRGB</span></div>
+            <div style="display:flex;align-items:flex-start;gap:10px;"><span style="width:16px;height:16px;flex:none;margin-top:2px;border-radius:2px;background:#d8d8d8;color:#111;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:600;">✓</span><div style="display:flex;flex-direction:column;gap:8px;"><span>{{ t.dng }}</span>
+              <div style="display:flex;gap:18px;font-size:13px;">
+                <span style="display:flex;align-items:center;gap:6px;color:{{ cleanColor }};opacity:{{ cleanOpacity }};"><span style="width:14px;height:14px;border-radius:7px;border:1px solid {{ cleanRing }};display:flex;align-items:center;justify-content:center;"><span style="width:6px;height:6px;border-radius:3px;background:{{ cleanDot }};"></span></span>{{ t.dngClean }}</span>
+                <span style="display:flex;align-items:center;gap:6px;color:{{ rawColor }};"><span style="width:14px;height:14px;border-radius:7px;border:1px solid {{ rawRing }};display:flex;align-items:center;justify-content:center;"><span style="width:6px;height:6px;border-radius:3px;background:{{ rawDot }};"></span></span>{{ t.dngRaw }}</span>
+              </div>
+              <sc-if value="{{ isBw }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#9a9a9a;max-width:380px;line-height:1.4;">{{ t.bwIr }}</span></sc-if>
+            </div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:12px;color:#a3a3a3;">{{ t.exportFolder }}</span><div style="display:flex;gap:8px;"><div style="flex:1;min-width:0;height:34px;display:flex;align-items:center;padding:0 10px;background:#141414;border:1px solid #3a3a3a;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:12px;white-space:nowrap;overflow:hidden;">~/Bilder/Pro Scan/{{ rollName }}/Export/</div><div style="height:34px;display:flex;align-items:center;padding:0 14px;border:1px solid #3a3a3a;border-radius:3px;font-size:13px;">{{ t.change }}</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 36px;border-top:1px solid #2e2e2e;background:#181818;">
+    <span style="font-size:13px;color:#8a8a8a;">{{ footNote }}</span>
+    <sc-if value="{{ isStart }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid #3a3a3a;border-radius:3px;font-size:13px;color:#c8c8c8;">{{ t.cancel }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;">Esc</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;background:#e6e6e6;color:#111;border-radius:3px;font-size:13px;font-weight:500;">{{ t.create }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#555;">Ctrl+Enter</span></div>
+      </div>
+    </sc-if>
+  </div>
+  <sc-if value="{{ showConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:rgba(8,8,8,.6);display:flex;align-items:center;justify-content:center;">
+      <div style="width:520px;display:flex;flex-direction:column;gap:18px;padding:26px 28px;background:#222;border:1px solid #444;border-radius:4px;box-shadow:0 16px 48px rgba(0,0,0,.6);">
+        <div style="display:flex;flex-direction:column;gap:6px;"><span style="font-size:20px;font-weight:500;">{{ t.cfTitle }}</span><span style="font-size:14px;color:#c8c8c8;">{{ t.cfFromTo }}</span></div>
+        <div style="display:flex;align-items:baseline;gap:12px;padding:12px 14px;background:#191919;border-radius:3px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:500;">{{ frames }}</span><span style="font-size:14px;color:#d0d0d0;">{{ t.cfCount }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#a3a3a3;line-height:1.45;"><span>✓ {{ t.cfKeep }}</span><span>· {{ t.cfCmy }}</span><span>· {{ t.cfDng }}</span></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 16px;border:1px solid #4a4a4a;border-radius:3px;font-size:13px;color:#c8c8c8;">{{ t.cancel }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a8a8a;">Esc</span></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;background:#e6e6e6;color:#111;border-radius:3px;font-size:13px;font-weight:500;">{{ cfAction }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#555;">Enter</span></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;de&quot;,&quot;en&quot;],&quot;default&quot;:&quot;de&quot;,&quot;tsType&quot;:&quot;'de'|'en'&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;start&quot;,&quot;settings&quot;],&quot;default&quot;:&quot;start&quot;,&quot;tsType&quot;:&quot;'start'|'settings'&quot;},&quot;film&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;color&quot;,&quot;bw&quot;],&quot;default&quot;:&quot;color&quot;,&quot;tsType&quot;:&quot;'color'|'bw'&quot;},&quot;confirm&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;frames&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:14,&quot;tsType&quot;:&quot;number&quot;}}">
+const T = {
+  de: { newRoll:'Neue Filmrolle', scannerOk:'CrystalScan 7200 · bereit', settingsTitle:'Rolleneinstellungen', framesW:'Bilder', close:'Schließen', reopen:'Vorhandene Filmrolle öffnen', openFolder:'Anderen Ordner wählen …',
+    banner:'Einstellungen von der letzten Rolle „2026-10-21 HP5 Berlin“ übernommen.', details:'Rollenangaben', name:'Name', filmType:'Filmtyp', ftColor:'Farbnegativ', ftBw:'Schwarzweißnegativ', ftPos:'Farbpositiv',
+    stock:'Filmmaterial', pushPull:'Push/Pull', camera:'Kamera', lens:'Objektiv', date:'Datum', dateVal:'03.11.2026', dev:'Entwickelt von', devPh:'optional', notes:'Notizen',
+    perRoll:'Einstellungen für diese Rolle', look:'Bildstil', frontier:'Frontier-Look', faithful:'Filmgetreu', multi:'Mehrfachbelichtung', multiHint:'Mehr Zeichnung in den Schatten, Rohscan dauert länger.', exportFormats:'Export', dng:'Raw-Export (DNG)', dngClean:'staubbereinigt', dngRaw:'unberührt', exportFolder:'Exportordner', change:'Ändern …',
+    bwIr:'Bei Schwarzweißnegativ nicht möglich: Das Silber im Film lässt kein Infrarot durch, deshalb gibt es keine Staubbereinigung.',
+    footNote:'Alles wird sofort gespeichert. Export läuft automatisch.', footSettings:'Änderungen gelten sofort. Neue Export-Einstellungen exportieren alle {n} Bilder im Hintergrund neu.', cancel:'Abbrechen', create:'Rolle anlegen und Bild 1 einlegen',
+    settingsBanner:'Gilt für alle Bilder dieser Rolle. Korrekturen pro Bild bleiben erhalten.',
+    cfTitle:'Filmtyp ändern?', cfFromTo:'Farbnegativ → Schwarzweißnegativ', cfCount:'Bilder werden neu entwickelt', cfKeep:'Korrekturen und Ausschnitte bleiben erhalten.', cfCmy:'C/M/Y-Werte bleiben gespeichert, wirken bei Schwarzweiß aber nicht.', cfDng:'Raw-Export (DNG) wird auf „unberührt“ gestellt. Exporte werden danach automatisch erneuert.', cfAction:'Filmtyp ändern' },
+  en: { newRoll:'New roll', scannerOk:'CrystalScan 7200 · ready', settingsTitle:'Roll settings', framesW:'frames', close:'Close', reopen:'Open existing roll', openFolder:'Choose another folder …',
+    banner:'Settings taken over from the last roll “2026-10-21 HP5 Berlin”.', details:'Roll details', name:'Name', filmType:'Film type', ftColor:'Colour negative', ftBw:'Black-and-white negative', ftPos:'Colour positive',
+    stock:'Film stock', pushPull:'Push/pull', camera:'Camera', lens:'Lens', date:'Date', dateVal:'2026-11-03', dev:'Developed by', devPh:'optional', notes:'Notes',
+    perRoll:'Settings for this roll', look:'Look', frontier:'Frontier look', faithful:'Faithful look', multi:'Multi-exposure', multiHint:'More shadow detail, raw scan takes longer.', exportFormats:'Export', dng:'Raw export (DNG)', dngClean:'dust-cleaned', dngRaw:'untouched', exportFolder:'Export folder', change:'Change …',
+    bwIr:'Not available for black-and-white negatives: the silver in the film blocks infrared, so there is no dust cleaning.',
+    footNote:'Everything saves immediately. Export runs automatically.', footSettings:'Changes apply immediately. New export settings re-export all {n} frames in the background.', cancel:'Cancel', create:'Create roll and load frame 1',
+    settingsBanner:'Applies to every frame of this roll. Per-frame corrections are kept.',
+    cfTitle:'Change film type?', cfFromTo:'Colour negative → black-and-white negative', cfCount:'frames will be re-developed', cfKeep:'Corrections and crops are kept.', cfCmy:'C/M/Y values stay saved but have no effect on black-and-white negatives.', cfDng:'Raw export (DNG) is set to “untouched”. Exports are then renewed automatically.', cfAction:'Change film type' }
+};
+class Component extends DCLogic {
+  renderVals() {
+    const lang = this.props.lang === 'en' ? 'en' : 'de';
+    const isSettings = this.props.mode === 'settings';
+    const isBw = this.props.film === 'bw';
+    const frames = String(this.props.frames ?? 14);
+    const t = { ...T[lang] };
+    if (isSettings) t.banner = t.settingsBanner;
+    const de = lang === 'de';
+    const rollName = isBw ? '2026-11-04 HP5 Hamburg' : '2026-11-03 Portra Lissabon';
+    const sel = isBw ? 1 : 0;
+    const ftItems = [t.ftColor, t.ftBw, t.ftPos].map((label, i) => ({ label, bg: i === sel ? '#4a4a4a' : '#1c1c1c', color: i === sel ? '#f4f4f4' : '#b0b0b0' }));
+    return {
+      t, isSettings, isStart: !isSettings, isBw, frames, rollName, ftItems,
+      framesText: `${frames} ${t.framesW}`,
+      stockVal: isBw ? 'Ilford HP5 Plus' : 'Kodak Portra 400', pushVal: isBw ? '+1' : '±0',
+      cleanColor: isBw ? '#8a8a8a' : '#e6e6e6', cleanOpacity: isBw ? '0.45' : '1', cleanRing: isBw ? '#5a5a5a' : '#d8d8d8', cleanDot: isBw ? 'transparent' : '#d8d8d8',
+      rawColor: isBw ? '#e6e6e6' : '#b0b0b0', rawRing: isBw ? '#d8d8d8' : '#5a5a5a', rawDot: isBw ? '#d8d8d8' : 'transparent',
+      footNote: isSettings ? t.footSettings.replace('{n}', frames) : t.footNote,
+      showConfirm: !!this.props.confirm, cfAction: t.cfAction,
+      recent: [
+        { name:'2026-10-21 HP5 Berlin', meta: de ? '36 Bilder · Schwarzweißnegativ · 21.10.' : '36 frames · black-and-white negative · 21 Oct' },
+        { name:'2026-09-14 Gold Ostsee', meta: de ? '37 Bilder · Farbnegativ · 14.09.' : '37 frames · colour negative · 14 Sep' },
+        { name:'2026-08-30 Velvia Alpen', meta: de ? '24 Bilder · Farbpositiv · 30.08.' : '24 frames · colour positive · 30 Aug' },
+        { name:'2026-08-02 Portra Hochzeit', meta: de ? '35 Bilder · Farbnegativ · 02.08.' : '35 frames · colour negative · 2 Aug' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

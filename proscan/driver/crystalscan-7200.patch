@@ -1,0 +1,71 @@
+--- a/backend/pieusb_scancmd.c
++++ b/backend/pieusb_scancmd.c
+@@ -1076,11 +1076,12 @@
+  * @see Pieusb_Settings
+  */
+ void
+-sanei_pieusb_cmd_set_gain_offset(SANE_Int device_number, struct Pieusb_Settings* settings, struct Pieusb_Command_Status *status)
++sanei_pieusb_cmd_set_gain_offset(SANE_Int device_number, SANE_Byte model, struct Pieusb_Settings* settings, struct Pieusb_Command_Status *status)
+ {
+     SANE_Byte command[SCSI_COMMAND_LEN];
+ #define GAIN_OFFSET_SIZE 29
+-    SANE_Int size = GAIN_OFFSET_SIZE;
++    /* Experimental CrystalScan 7200 packet: omit six reserved trailing bytes. */
++    SANE_Int size = model == 0x30 ? 23 : GAIN_OFFSET_SIZE;
+     SANE_Byte data[GAIN_OFFSET_SIZE];
+     int k;
+     SANE_Byte val[3];
+--- a/backend/pieusb_scancmd.h
++++ b/backend/pieusb_scancmd.h
+@@ -369,7 +369,7 @@
+ 
+ void sanei_pieusb_cmd_get_gain_offset(SANE_Int device_number, struct Pieusb_Settings* settings, struct Pieusb_Command_Status *status);
+ 
+-void sanei_pieusb_cmd_set_gain_offset(SANE_Int device_number, struct Pieusb_Settings* settings, struct Pieusb_Command_Status *status);
++void sanei_pieusb_cmd_set_gain_offset(SANE_Int device_number, SANE_Byte model, struct Pieusb_Settings* settings, struct Pieusb_Command_Status *status);
+ 
+ void sanei_pieusb_cmd_read_state(SANE_Int device_number, struct Pieusb_Scanner_State* state, struct Pieusb_Command_Status *status);
+ 
+--- a/backend/pieusb_specific.c
++++ b/backend/pieusb_specific.c
+@@ -1331,6 +1331,7 @@
+       /* dirt usually has smooth edges which also need correction */
+       size_dilate = scanner->mode.resolution / 1000 + 1;
+ 
++      DBG (DBG_warning, "NEGATIVSTUDIO cleaning detect\n");
+       /* first detect large dirt by a static threshold */
+       status = sanei_ir_create_norm_histogram (&parameters, cplane[3], &norm_histo);
+       if (status != SANE_STATUS_GOOD)
+@@ -1371,6 +1372,7 @@
+         free (thresh_data);
+         return SANE_STATUS_CANCELLED;
+       }
++      DBG (DBG_warning, "NEGATIVSTUDIO cleaning repair\n");
+       /* replace the dirt and smoothen film grain and crop if possible */
+       status = sanei_ir_dilate_mean (&parameters, cplane, thresh_data,
+               500, size_dilate, winsize_smooth, smooth,
+@@ -2027,7 +2029,7 @@
+             break;
+     }
+     /* Now set values for gain, offset and exposure */
+-    sanei_pieusb_cmd_set_gain_offset (scanner->device_number, &(scanner->settings), &status);
++    sanei_pieusb_cmd_set_gain_offset (scanner->device_number, scanner->device->model, &(scanner->settings), &status);
+     ret = sanei_pieusb_convert_status (status.pieusb_status);
+     DBG (DBG_info_sane, "sanei_pieusb_set_gain_offset(): status %s\n", sane_strstatus (ret));
+     return ret;
+@@ -2205,6 +2207,7 @@
+             return SANE_STATUS_INVAL;
+     }
+     lines_remaining = lines_to_read;
++    DBG (DBG_warning, "NEGATIVSTUDIO acquisition 0\n");
+     DBG (DBG_info_proc, "sanei_pieusb_get_scan_data(colorFormat %d), lines_to_read %d, bytes %d\n", scanner->mode.colorFormat, lines_to_read, parameter_bytes);
+ 
+   /*
+@@ -2294,6 +2297,7 @@
+         }
+         free(linebuf);
+         lines_remaining -= lines; /* Note: excess discarded */
++        DBG (DBG_warning, "NEGATIVSTUDIO acquisition %d\n", 100 * (lines_to_read - lines_remaining) / lines_to_read);
+         DBG(DBG_info_sane, "sanei_pieusb_get_scan_data(): reading lines: remaining %d\n", lines_remaining);
+     }
+ /*
