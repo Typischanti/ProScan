@@ -79,6 +79,11 @@ class MainWindow(QMainWindow):
         self.auto = {}           # n -> (key, auto correction)
         self.choosing = None     # frame whose film base is being tried while choosing one (B)
         self.dirty = set()       # frames whose exports wait for the export timer
+        self.copied = None       # (frame number, correction) from Ctrl+C
+        self.notice = ''         # short confirmation shown in the footer
+        self.notice_timer = QTimer(self)
+        self.notice_timer.setSingleShot(True)
+        self.notice_timer.timeout.connect(self.clear_notice)
         self.export_timer = QTimer(self)
         self.export_timer.setSingleShot(True)
         self.export_timer.timeout.connect(self.flush_exports)
@@ -450,14 +455,40 @@ class MainWindow(QMainWindow):
         """What undo restores: correction, crop and the chosen film base source."""
         return copy.deepcopy({key: frame[key] for key in ('correction', 'crop', 'film_base') if key in frame})
 
-    def change(self, n, **edits):
+    def change(self, n, refresh=True, **edits):
         frame = self.frame(n)
         self.undo.setdefault(n, []).append(self.edits(frame))
         self.redo[n] = []
         frame.update(edits)
         self.roll.save()
         self.export_later(n)
+        if refresh:
+            self.refresh()
+
+    def clear_notice(self):
+        self.notice = ''
         self.refresh()
+
+    def say(self, text):
+        self.notice = text
+        self.notice_timer.start(4000)
+        self.refresh()
+
+    def copy_correction(self):
+        if self.can_correct():
+            self.copied = (self.sel, dict(self.frame(self.sel)['correction']))
+            self.say(tr('copied', n=self.sel))
+
+    def paste_correction(self, everywhere):
+        """Paste the copied correction (not crop or turn: every photo is framed on its own)."""
+        if not self.copied or not self.can_correct():
+            return
+        source, correction = self.copied
+        targets = [f['number'] for f in self.roll.frames] if everywhere else [self.sel]
+        changed = [n for n in targets if self.frame(n)['correction'] != correction]
+        for n in changed:
+            self.change(n, refresh=False, correction=dict(correction))
+        self.say(tr('pasted', n=source, count=len(changed)))
 
     def turn(self, degrees):
         if self.can_correct():
@@ -593,6 +624,10 @@ class MainWindow(QMainWindow):
             self.history(back=not mods & Qt.KeyboardModifier.ShiftModifier)
         elif ctrl and key == Qt.Key.Key_Y:
             self.history(back=False)
+        elif ctrl and key == Qt.Key.Key_C:
+            self.copy_correction()
+        elif ctrl and key == Qt.Key.Key_V:
+            self.paste_correction(everywhere=bool(mods & Qt.KeyboardModifier.ShiftModifier))
         elif ctrl and key == Qt.Key.Key_E:
             if self.sel:
                 self.export(self.sel)
@@ -689,7 +724,7 @@ class MainWindow(QMainWindow):
                                  f'{tr("frame")} {n_step}' if has and n_step else '', steps[step] if has else tr('step_none'),
                                  accent, *self.scanner_text(), has, self.grid, i18n.language,
                                  self.progress[0] if self.progress else None)
-        self.footer.update_state(tr('foot') if has else tr('foot')[-1:], tr('autosave') if has else '')
+        self.footer.update_state(tr('foot') if has else tr('foot')[-1:], self.notice or (tr('autosave') if has else ''))
         if not has:
             return self.render_empty()
         if self.step == 'fail':

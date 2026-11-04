@@ -261,8 +261,9 @@ class Card(QWidget):
 
 
 def discard(widget):
-    # Detach at once: deleteLater alone leaves the old widget painted until the next event loop pass.
-    widget.setParent(None)
+    # Hide at once (deleteLater alone leaves it painted until the next event loop pass) but keep
+    # its parent: Qt then owns the deletion, and Python never destroys it a second time.
+    widget.hide()
     widget.deleteLater()
 
 
@@ -625,30 +626,34 @@ class Footer(QWidget):
         super().__init__()
         self.setFixedHeight(30)
         scoped(self, 'footer', f'background: {t.FOOTER}; border-top: 1px solid #242424;')
-        self.layout_ = QHBoxLayout(self)
-        self.layout_.setContentsMargins(20, 0, 20, 0)
-        self.layout_.setSpacing(20)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 0, 20, 0)
+        layout.setSpacing(20)
+        self.keys = QHBoxLayout()
+        self.keys.setSpacing(20)
+        layout.addLayout(self.keys)
+        layout.addStretch()
+        self.note = label('', 12, '#6e6e6e')
+        layout.addWidget(self.note)
         self.shown = None
 
     def update_state(self, keys, note):
-        if self.shown == (keys, note):
+        # The note changes often (confirmations); only a language switch rebuilds the key hints.
+        self.note.setText(note)
+        if self.shown and self.shown[0] == keys:
+            self.shown = (keys, note)
             return
         self.shown = (keys, note)
-        while self.layout_.count():
-            item = self.layout_.takeAt(0)
-            if item.widget():
-                discard(item.widget())
+        while self.keys.count():
+            discard(self.keys.takeAt(0).widget())
         for key, text in keys:
-            pair = QHBoxLayout()
-            pair.setSpacing(6)
             w = QWidget()
+            pair = QHBoxLayout(w)
+            pair.setSpacing(6)
             pair.setContentsMargins(0, 0, 0, 0)
-            w.setLayout(pair)
             pair.addWidget(key_cap(key))
             pair.addWidget(label(text, 12, t.DIM))
-            self.layout_.addWidget(w)
-        self.layout_.addStretch()
-        self.layout_.addWidget(label(note, 12, '#6e6e6e'))
+            self.keys.addWidget(w)
 
 
 class Legend(QDialog):

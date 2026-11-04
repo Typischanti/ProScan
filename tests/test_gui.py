@@ -148,6 +148,7 @@ class GuiFlowTests(unittest.TestCase):
         w.create_roll({'name': 'Ordner', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
         self.scan_frame()
         form = RollForm('settings', roll=w.roll)
+        self.addCleanup(form.deleteLater)
         self.assertEqual(form.folder.text(), '')
         self.assertEqual(form.folder.placeholderText(), str(w.roll.path / 'Export'))
         other = Path(self.tmp.name) / 'Ausgabe'
@@ -188,6 +189,33 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_B, 'b')
         self.key(Qt.Key.Key_Escape)
         self.assertEqual((w.choosing, frames.film_base(w.roll, 2)[1:]), (None, (1, 'borrowed')))
+
+    def test_copy_and_paste_correction(self):
+        w = self.w
+        w.create_roll({'name': 'Kopieren', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        for _ in range(3):
+            self.scan_frame()
+        w.select(1)
+        for text, key in (('+', Qt.Key.Key_Plus), ('9', Qt.Key.Key_9), ('*', Qt.Key.Key_Asterisk)):
+            self.key(key, text)
+        self.key(Qt.Key.Key_T, 't')
+        self.key(Qt.Key.Key_C, 'c', Qt.KeyboardModifier.ControlModifier)
+        self.assertIn('Bild 1 kopiert', w.footer.shown[1])
+        wanted = {**develop.AUTO, 'D': 1, 'Y': 1, 'S': 3}
+
+        w.select(2)
+        self.key(Qt.Key.Key_V, 'v', Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(w.frame(2)['correction'], wanted)
+        self.assertEqual(w.frame(2)['crop']['turn'], 0)  # only the correction travels
+        self.assertEqual(w.frame(3)['correction'], develop.AUTO)
+
+        w.select(3)
+        self.key(Qt.Key.Key_V, 'V', Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual([f['correction'] for f in rolls.Roll.open(w.roll.path).frames], [wanted] * 3)
+        self.assertIn('auf 1 Bild(er)', w.footer.shown[1])  # frames 1 and 2 already had it
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(w.frame(3)['correction'], develop.AUTO)
+        self.assertEqual(w.dirty, {3})  # exported after the usual pause; frame 2 went when frame 3 was selected
 
     def test_hung_scanner_affects_only_that_frame(self):
         w = self.w
