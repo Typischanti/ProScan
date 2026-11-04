@@ -13,13 +13,16 @@ and `pyside6`. The patched scanner driver ships in `proscan/driver/`.
 Start: **Pro Scan** in the app menu, or `proscan` in a terminal (`~/.local/bin/proscan`).
 
 Works: the window (roll start and settings, preview with Enter/Esc, raw scan with
-infrared and multi-exposure, frame strip, 12-up grid, number-pad correction keys,
-crop and straighten, undo per frame, rescan, scanner failure, German/English),
-dust detection, roll folders in `~/Bilder/Pro Scan/`, and raw export (DNG).
+infrared and multi-exposure and a progress bar, frame strip, 12-up grid, number-pad
+correction keys, crop and straighten, 90° rotation (T / Shift+T), undo per frame,
+rescan, scanner failure, German/English), the development (film base per frame,
+borrowed or chosen with B; Frontier look and faithful look for colour negative,
+black-and-white negative and colour positive), and exports: TIFF 16 bit with an
+embedded profile (sRGB, Adobe RGB, ProPhoto), JPEG (sRGB) and raw DNG, written
+2 s after the last change to a frame. Roll folders live in `~/Bilder/Pro Scan/`.
 
-Not yet: the real development (the screen uses a simple first inversion; the
-Frontier look and Filmgetreu come next), TIFF/JPEG export, choosing a frame's
-film base, the monitor's colour profile, and mouse dragging in crop mode.
+Not yet: film stock profiles, the monitor's colour profile on screen (sRGB is
+assumed), mouse dragging in crop mode, and a USB reset for a hung scanner.
 
 Command-line scanning still works (`proscan neu …`, `proscan scan …`).
 

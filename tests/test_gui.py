@@ -11,13 +11,15 @@ import unittest
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
+import tifffile
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog
 
-from proscan import capture, develop, scanner
+from proscan import capture, develop, frames, scanner
 from proscan import roll as rolls
 from proscan.gui import i18n
+from proscan.gui.rollform import RollForm
 from proscan.gui.window import MainWindow
 from tests.test_scan_core import FakeScanner, film
 
@@ -37,8 +39,20 @@ class GuiFlowTests(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         self.w = MainWindow()
-        self.addCleanup(self.w.close)
+        self.addCleanup(self.close_window)
         self.wait(lambda: self.w.device)
+
+    def close_window(self):
+        self.w.close()  # writes pending exports and waits for them
+        # Let worker threads finish before Qt objects go away, or their results arrive at deleted objects.
+        for pool in (self.w.scan_pool, self.w.export_pool, self.w.probe_pool):
+            pool.shutdown(wait=True)
+        app.processEvents()
+        # Delete the window now, while Qt is fully alive, not at interpreter exit in random order.
+        self.w.probe_timer.stop()
+        self.w.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -70,7 +84,15 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_Escape)  # reload: nothing is scanned
         self.assertEqual((w.step, w.roll.frames), ('load', []))
 
+        steps = []
+        # Connected after the window's own handler, so it reads the header once the window has updated it.
+        w.bridge.progress.connect(lambda *_: steps.append(w.header.step_text.text()))
         self.scan_frame()
+        self.assertIn('Vorschau … 100 %', steps)
+        self.assertIn('Rohscan 1/2 … 45 %', steps)
+        self.assertIn('Rohscan wird zusammengeführt … 90 %', steps)
+        self.assertIsNone(w.progress)
+        self.assertFalse(w.header.bar.isVisibleTo(w.header))
         self.assertEqual(len(w.roll.frames), 1)
         self.wait(lambda: w.exports.get(1, ('pending',))[0] != 'pending')
         self.assertEqual(w.exports[1][0], 'ok')
@@ -91,8 +113,27 @@ class GuiFlowTests(unittest.TestCase):
         h, wd = np.load(w.roll.frame_dir(1) / 'rohscan.npy', mmap_mode='r').shape[:2]
         self.assertAlmostEqual(crop['w'] * wd / (crop['h'] * h), 1.5)
 
+        self.key(Qt.Key.Key_T, 't')
+        self.assertEqual(w.frame(1)['crop']['turn'], 90)
+        self.assertEqual(w.view.image.height() > w.view.image.width(), True)  # portrait on screen
+        self.assertEqual((w.dirty, w.export_timer.isActive()), ({1}, True))  # exported 2 s after the last change
+        w.flush_exports()
+        self.wait(lambda: w.exports[1][0] != 'pending')
+        self.assertEqual(w.exports[1][:1], ('ok',))
+        for suffix in ('.tif', '.jpg', '.dng'):
+            self.assertTrue((w.roll.path / 'Export' / f'Testrolle_01{suffix}').exists())
+        with tifffile.TiffFile(w.roll.path / 'Export' / 'Testrolle_01.dng') as tif:
+            self.assertEqual(tif.pages[0].tags[274].value, 6)
+        self.key(Qt.Key.Key_T, 'T', Qt.KeyboardModifier.ShiftModifier)
+        self.key(Qt.Key.Key_T, 'T', Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(w.frame(1)['crop']['turn'], 270)
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(w.frame(1)['crop']['turn'], 0)
+        self.key(Qt.Key.Key_T, 't')
+
         self.scan_frame()
-        self.assertEqual(w.frame(2)['crop'], crop)  # a new frame starts with the previous frame's crop
+        # A new frame starts with the previous frame's crop, but upright.
+        self.assertEqual(w.frame(2)['crop'], {**crop, 'turn': 0})
 
         w.select(1)
         self.key(Qt.Key.Key_R, 'r')
@@ -101,6 +142,52 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(len(w.roll.frames), 2)
         self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2})
         self.assertEqual(len(list((w.roll.path / 'Ersetzt').iterdir())), 1)
+
+    def test_export_folder_from_roll_settings(self):
+        w = self.w
+        w.create_roll({'name': 'Ordner', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        self.scan_frame()
+        form = RollForm('settings', roll=w.roll)
+        self.assertEqual(form.folder.text(), '')
+        self.assertEqual(form.folder.placeholderText(), str(w.roll.path / 'Export'))
+        other = Path(self.tmp.name) / 'Ausgabe'
+        other.mkdir()
+        with mock.patch.object(QFileDialog, 'getExistingDirectory', return_value=str(other)):
+            form.choose_folder()
+        w.apply_settings(*form.values())
+        self.assertEqual(rolls.Roll.open(w.roll.path).settings['export']['folder'], str(other))
+        self.wait(lambda: w.exports[1][0] != 'pending')
+        self.assertTrue((other / 'Ordner_01.dng').exists())
+        with mock.patch.object(QFileDialog, 'getExistingDirectory', return_value=str(w.roll.path / 'Export')):
+            form.choose_folder()
+        self.assertEqual(form.folder.text(), '')  # back to the roll's own Export/
+
+    def test_borrowed_film_base_and_choosing_one(self):
+        w = self.w
+        w.create_roll({'name': 'Filmgrund', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        textured = self.fake.truth.copy()
+        clear = textured.copy()
+        clear[:, :6] = clear[:, -6:] = .95 * 65535  # unexposed film between frames
+        for truth in (clear, textured, clear):
+            self.fake.truth = truth
+            self.scan_frame()
+        self.assertEqual([frames.film_base(w.roll, n)[1:] for n in (1, 2, 3)], [(1, 'own'), (1, 'borrowed'), (3, 'own')])
+        self.assertEqual([t['borrowed'] for t in w.strip.tiles[:3]], [False, True, False])
+
+        w.select(2)
+        self.key(Qt.Key.Key_B, 'b')
+        self.assertEqual(w.choosing, 1)
+        self.key(Qt.Key.Key_Right)
+        self.assertEqual(w.choosing, 3)
+        self.assertEqual(w.film_base(2)[1:], (3, 'chosen'))  # the screen tries the frame being chosen
+        self.key(Qt.Key.Key_Return)
+        self.assertIsNone(w.choosing)
+        self.assertEqual(rolls.Roll.open(w.roll.path).frames[1]['film_base']['from'], 3)
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(frames.film_base(w.roll, 2)[1:], (1, 'borrowed'))
+        self.key(Qt.Key.Key_B, 'b')
+        self.key(Qt.Key.Key_Escape)
+        self.assertEqual((w.choosing, frames.film_base(w.roll, 2)[1:]), (None, (1, 'borrowed')))
 
     def test_hung_scanner_affects_only_that_frame(self):
         w = self.w

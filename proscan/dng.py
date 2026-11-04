@@ -31,10 +31,18 @@ def xmp(details, number):
             '</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>').encode()
 
 
-def write(path, raw, details, number):
-    """Write float32 linear RGB `raw` (scanner counts) as a 16-bit LinearRaw DNG. Notes are never written."""
+# TIFF Orientation for a clockwise quarter turn of the image.
+ORIENTATION = {0: 1, 90: 6, 180: 3, 270: 8}
+
+
+def write(path, raw, details, number, turn=0):
+    """Write float32 linear RGB `raw` (scanner counts) as a 16-bit LinearRaw DNG. Notes are never written.
+
+    The pixels stay as scanned; `turn` (degrees clockwise) only sets the Orientation tag.
+    """
     data = np.clip(np.rint(raw), 0, 65535).astype(np.uint16)
     tags = [
+        (274, 'H', 1, ORIENTATION[turn], True),
         (271, 's', 0, 'Reflecta', True),
         (272, 's', 0, 'CrystalScan 7200', True),
         (50706, 'B', 4, (1, 4, 0, 0), True),          # DNGVersion

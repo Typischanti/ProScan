@@ -1,4 +1,5 @@
 """Roll start and roll settings (docs/design/Roll Form.dc.html)."""
+from pathlib import Path
 import copy
 
 from PySide6.QtCore import Qt, Signal
@@ -154,8 +155,6 @@ class RollForm(QWidget):
         self.jpeg = QCheckBox('JPEG  ·  sRGB')
         self.jpeg.setChecked(export['jpeg'])
         right.addWidget(self.jpeg)
-        # shortcut: TIFF and JPEG are stored as settings only; they are written once development lands
-        right.addWidget(label('TIFF, JPEG: ' + tr('not_yet'), 11, '#6e6e6e'))
         self.dng = QCheckBox(tr('dng'))
         self.dng.setChecked(export['dng'])
         right.addWidget(self.dng)
@@ -172,7 +171,10 @@ class RollForm(QWidget):
         right.addWidget(self.bw_note)
         folder = QHBoxLayout()
         self.folder = QLineEdit(export['folder'] or '')
-        self.folder.setPlaceholderText('<Rolle>/Export/')
+        # Chosen with the folder dialog only, so it is always an absolute, existing folder.
+        self.folder.setReadOnly(True)
+        self.name.textChanged.connect(self.update_folder_hint)
+        self.update_folder_hint()
         choose = QPushButton(tr('choose'))
         choose.clicked.connect(self.choose_folder)
         folder.addWidget(self.folder, 1)
@@ -211,10 +213,19 @@ class RollForm(QWidget):
         self.dng_clean.setEnabled(not bw)
         self.bw_note.setVisible(bw)
 
+    def default_folder(self):
+        """The export folder used while none is chosen: Export/ inside the roll folder."""
+        return (self.roll.path if self.roll else rolls.ROOT / (self.name.text().strip() or tr('name'))) / 'Export'
+
+    def update_folder_hint(self):
+        self.folder.setPlaceholderText(str(self.default_folder()).replace(str(Path.home()), '~', 1))
+
     def choose_folder(self):
-        path = QFileDialog.getExistingDirectory(self, tr('export_folder'), self.folder.text() or str(rolls.ROOT))
+        start = self.folder.text() or next(p for p in (self.default_folder(), rolls.ROOT, Path.home()) if p.exists())
+        path = QFileDialog.getExistingDirectory(self, tr('export_folder'), str(start))
         if path:
-            self.folder.setText(path)
+            # Choosing the default folder again means "no own folder", so it follows a later roll rename.
+            self.folder.setText('' if Path(path) == self.default_folder() else path)
 
     def choose_roll(self):
         path = QFileDialog.getExistingDirectory(self, tr('open_roll'), str(rolls.ROOT))

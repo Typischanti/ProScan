@@ -3,12 +3,13 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
 import tifffile
 
-from proscan import capture, dng, export, infrared, multiexposure, pnm, scanner
+from proscan import capture, develop, dng, export, infrared, multiexposure, pnm, scanner
 from proscan.roll import Roll
 
 SETTINGS = {'exposure': [3000] * 4, 'gain': [19] * 4, 'offset': [0] * 4, 'light': 4, 'double': 0}
@@ -48,10 +49,12 @@ class FakeScanner:
         for y, x in dust:  # dust sits on the film, so it moves with it between passes
             self.truth[y:y + 2, x:x + 2] *= .5
 
-    def __call__(self, args, timeout):
+    def __call__(self, args, timeout, progress=None):
         self.calls.append(args)
         if '--all-options' in args:
             return OPTIONS
+        for value in (.25, .5, 1.) if progress else ():
+            progress(value)
         output = Path(args[args.index('--output-file') + 1])
         manual = next((a for a in args if a.startswith('--exposure-time-r=')), None)
         if manual is None:
@@ -122,6 +125,17 @@ class MultiExposureTests(unittest.TestCase):
         np.testing.assert_allclose(merged[..., 2], reference[..., 2], rtol=1e-6)
 
 
+class CropTests(unittest.TestCase):
+    def test_quarter_turns_follow_the_crop(self):
+        image = np.arange(4 * 6 * 3, dtype=np.float32).reshape(4, 6, 3)
+        crop = {'x': 0, 'y': 0, 'w': 1, 'h': 1, 'angle': 0}
+        self.assertEqual(develop.apply_crop(image, crop).shape, (4, 6, 3))
+        turned = develop.apply_crop(image, {**crop, 'turn': 90})
+        self.assertEqual(turned.shape, (6, 4, 3))
+        np.testing.assert_array_equal(turned[0, -1], image[0, 0])  # top-left goes to top-right when turned clockwise
+        np.testing.assert_array_equal(develop.apply_crop(image, {**crop, 'turn': 270})[-1, 0], image[0, 0])
+
+
 class InfraredTests(unittest.TestCase):
     def test_dust_is_found_and_only_dust_repaired(self):
         rng = np.random.default_rng(1)
@@ -166,6 +180,28 @@ class CaptureAndRollTests(unittest.TestCase):
         self.assertEqual(np.load(self.root / 'f' / 'rohscan.npy').dtype, np.float32)
         self.assertTrue(np.load(self.root / 'f' / 'staubmaske.npy')[20:22, 30:32].all())
 
+    def test_progress_runs_through_both_passes(self):
+        seen = []
+        self.scan(FakeScanner(film()), self.root / 'f', progress=lambda *a: seen.append(a))
+        self.assertEqual(seen[0], (.25 / 2 * .9, 1, 2))
+        self.assertIn((.5 * .9, 1, 2), seen)
+        self.assertEqual(seen[-1], (.9, None, 2))
+        self.assertEqual([a[0] for a in seen], sorted(a[0] for a in seen))
+
+    def test_scanimage_progress_is_parsed_while_scanning(self):
+        script = self.root / 'scanimage'
+        script.write_text('#!/bin/sh\nprintf "NEGATIVSTUDIO acquisition 40\\n" >&2\nsleep .2\n'
+                          'printf "NEGATIVSTUDIO acquisition 100\\nProgress: 50.0%%\\r" >&2\nsleep .2\nprintf "Progress: 100.0%%\\r" >&2\n')
+        script.chmod(0o755)
+        seen = []
+        with mock.patch.object(scanner, 'SCANIMAGE', str(script)):
+            log = scanner.run([], 10, seen.append)
+        self.assertEqual(seen, [.2, .75, 1.])  # only the latest value of each read counts
+        self.assertIn('acquisition 40', log)
+        script.write_text('#!/bin/sh\nsleep 5\n')
+        with mock.patch.object(scanner, 'SCANIMAGE', str(script)), self.assertRaises(scanner.ScannerHung):
+            scanner.run([], .5, seen.append)
+
     def test_black_and_white_single_exposure(self):
         report = self.scan(FakeScanner(scene()), self.root / 'f', infrared=False, multi_exposure=False)
         self.assertNotIn('merge', report)
@@ -179,13 +215,13 @@ class CaptureAndRollTests(unittest.TestCase):
 
     def test_missing_driver_log_keeps_the_reference(self):
         fake = FakeScanner(film())
-        report = self.scan(lambda args, timeout: fake(args, timeout) and '', self.root / 'f')
+        report = self.scan(lambda args, timeout, progress=None: fake(args, timeout) and '', self.root / 'f')
         self.assertEqual(report['merge'], {'status': 'skipped', 'reason': 'Belichtungsdaten fehlen im Treiberprotokoll.'})
         self.assertTrue((self.root / 'f' / 'rohscan.npy').exists())
         self.assertEqual(scanner.environment()['SANE_DEBUG_PIEUSB'], '5')
 
     def test_hung_scanner_leaves_nothing_behind(self):
-        def hung(args, timeout):
+        def hung(args, timeout, progress=None):
             raise scanner.ScannerHung('hängt')
         with self.assertRaises(scanner.ScannerHung):
             capture.scan_raw('pieusb:0', self.root / 'f', infrared=True, multi_exposure=True, run=hung)
@@ -206,8 +242,16 @@ class CaptureAndRollTests(unittest.TestCase):
             roll.rescan_frame(2, lambda d: (_ for _ in ()).throw(scanner.ScannerHung('x')))
         self.assertTrue((roll.frame_dir(2) / 'rohscan.npy').exists())
 
-        [path] = export.export_frame(roll, 2)
-        self.assertEqual(path, roll.path / 'Export' / 'Hochzeit Lübeck_02.dng')
+        paths = export.export_frame(roll, 2)
+        self.assertEqual([p.name for p in paths], [f'Hochzeit Lübeck_02.{s}' for s in ('tif', 'jpg', 'dng')])
+        path = paths[-1]
+        with tifffile.TiffFile(paths[0]) as tif:
+            self.assertEqual((tif.pages[0].dtype, tif.pages[0].shape[2]), (np.uint16, 3))
+            self.assertIn('Adobe RGB'.encode('utf-16-be'), tif.pages[0].tags[34675].value)  # ICC description
+        jpeg = paths[1].read_bytes()
+        self.assertIn(b'ICC_PROFILE', jpeg[:2000])
+        self.assertIn('Hochzeit Lübeck · Bild 2'.encode(), jpeg[:4000])
+        self.assertNotIn(b'privat', jpeg)
         with tifffile.TiffFile(path) as tif:
             page = tif.pages[0]
             self.assertEqual(page.photometric, tifffile.PHOTOMETRIC.LINEAR_RAW)

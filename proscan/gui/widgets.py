@@ -2,7 +2,7 @@
 import numpy as np
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
-from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy,
                                QVBoxLayout, QWidget)
 
 from .. import develop
@@ -88,6 +88,13 @@ class Header(QWidget):
         for w in (self.dot, self.step_frame, self.step_text):
             step.addWidget(w)
         step.addStretch()
+        self.bar = QProgressBar()
+        self.bar.setFixedSize(140, 6)
+        self.bar.setTextVisible(False)
+        self.bar.setRange(0, 1000)
+        self.bar.setStyleSheet(f'QProgressBar {{ background: #2e2e2e; border: none; border-radius: 3px; }}'
+                               f'QProgressBar::chunk {{ background: {t.BLUE}; border-radius: 3px; }}')
+        step.addWidget(self.bar)
         layout.addWidget(self.step)
         right = QHBoxLayout()
         right.setSpacing(14)
@@ -105,7 +112,10 @@ class Header(QWidget):
             right.addWidget(button)
         layout.addLayout(right, 1)
 
-    def update_state(self, name, meta, frame_text, step_text, accent, scanner_text, scanner_color, has_roll, grid_on, language):
+    def update_state(self, name, meta, frame_text, step_text, accent, scanner_text, scanner_color, has_roll, grid_on, language,
+                     progress=None):
+        self.bar.setVisible(progress is not None)
+        self.bar.setValue(round((progress or 0) * 1000))
         self.roll_name.setText(name)
         self.roll_meta.setText(meta)
         self.step_frame.setText(frame_text)
@@ -353,7 +363,7 @@ class CorrectionPanel(QWidget):
             p.drawText(QRectF(w - 18 - 80, y, 80, 56), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, text)
             p.setOpacity(1)
             y += 58
-        if s['locked']:
+        if s['locked'] and s.get('locked_note', True):
             box = QRectF(18, 72 + 58 * 2.5, w - 36, 44)
             p.fillRect(box, QColor('#141414'))
             p.setPen(QColor('#3a3a3a'))
@@ -367,6 +377,8 @@ class CorrectionPanel(QWidget):
             p.drawText(18, y + 12, tr('bw_note'))
             y += 22
         y += 8
+        if s.get('film_base'):
+            y = self._paint_film_base(p, w, y, s['film_base'])
         p.setPen(QColor(t.LINE))
         p.drawLine(0, y, w, y)
         p.setFont(font(13))
@@ -392,7 +404,47 @@ class CorrectionPanel(QWidget):
         p.setFont(font(12))
         p.setPen(QColor('#a3a3a3'))
         p.drawText(36, y + 24, text)
-        self._paint_pad(p, w, s['bw'])
+        if s.get('pad', True):
+            self._paint_pad(p, w, s['bw'])
+
+    def _paint_film_base(self, p, w, y, fb):
+        """FB block: which frame's film base this frame uses, and B to change it."""
+        keys = fb['keys'] or []
+        height = 62 + 20 * len(keys)
+        if keys:
+            p.fillRect(QRectF(0, y, w, height), QColor('#262626'))
+            p.setPen(QColor('#6a6a6a'))
+            p.drawRect(QRectF(0, y, w - 1, height))
+        p.setPen(QColor(t.LINE))
+        p.drawLine(0, y, w, y)
+        badge = QRectF(18, y + 13, 24, 16)
+        p.setPen(QColor('#cfcfcf'))
+        p.drawRect(badge)
+        p.setFont(font(10, mono=True))
+        p.drawText(badge, Qt.AlignmentFlag.AlignCenter, 'FB')
+        p.setFont(font(14))
+        p.setPen(QColor(t.TEXT))
+        p.drawText(QRectF(50, y + 10, w - 120, 22), Qt.AlignmentFlag.AlignVCenter, fb['title'])
+        p.setFont(font(12))
+        p.setPen(QColor('#c8c8c8'))
+        p.drawText(QRectF(18, y + 10, w - 60, 22), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, fb['action'])
+        p.setFont(font(11, mono=True))
+        p.setPen(QColor('#4a4a4a'))
+        p.drawRect(QRectF(w - 36, y + 12, 18, 18))
+        p.setPen(QColor(t.TEXT))
+        p.drawText(QRectF(w - 36, y + 12, 18, 18), Qt.AlignmentFlag.AlignCenter, 'B')
+        p.setFont(font(12))
+        p.setPen(QColor(t.DIM))
+        p.drawText(QRectF(18, y + 34, w - 36, 22), Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap, fb['sub'])
+        for i, (text, key) in enumerate(keys):
+            row = QRectF(18, y + 60 + 20 * i, w - 36, 18)
+            p.setPen(QColor('#c8c8c8'))
+            p.drawText(row, Qt.AlignmentFlag.AlignVCenter, text)
+            p.setFont(font(11, mono=True))
+            p.setPen(QColor('#e0e0e0'))
+            p.drawText(row, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, key)
+            p.setFont(font(12))
+        return y + height
 
     def _paint_pad(self, p, w, bw):
         pad = tr('pad')
@@ -478,27 +530,44 @@ class Strip(QWidget):
                 p.drawImage(fitted(tile['image'].size(), r).intersected(r), tile['image'])
             else:
                 p.fillRect(r, QColor('#222' if state == 'scanning' else '#161616'))
-            pen = (QPen(QColor('#f0f0f0'), 2) if tile['selected'] else QPen(QColor(t.AMBER), 2, Qt.PenStyle.DashLine)
+            p.setOpacity(.3 if tile.get('dim') else 1)
+            pen = (QPen(QColor('#f0f0f0'), 2) if tile['selected'] else QPen(QColor('#f0f0f0'), 2, Qt.PenStyle.DashLine)
+                   if tile.get('candidate') else QPen(QColor(t.AMBER), 2, Qt.PenStyle.DashLine)
                    if state == 'preview' else QPen(QColor(t.RED), 2) if state == 'failed' else QPen(QColor(t.BLUE), 1)
                    if state == 'scanning' else QPen(QColor('#383838'), 1, Qt.PenStyle.DashLine) if state == 'empty'
                    else QPen(QColor('#2e2e2e'), 1))
             p.setPen(pen)
             p.drawRect(r)
-            center = {'preview': (tr('preview')[:6] + '.', t.AMBER), 'failed': ('✕', t.RED), 'scanning': ('…', '#c8c8c8')}.get(state)
+            progress = tile.get('progress')
+            scanning = f'{round(progress * 100)} %' if progress is not None else '…'
+            center = {'preview': (tr('preview')[:6] + '.', t.AMBER), 'failed': ('✕', t.RED), 'scanning': (scanning, '#c8c8c8')}.get(state)
             if center:
                 p.setFont(font(11, QFont.Weight.DemiBold, mono=True))
                 p.setPen(QColor(center[1]))
                 p.drawText(r, Qt.AlignmentFlag.AlignCenter, center[0])
+            if progress is not None and state in ('scanning', 'preview'):
+                track = QRectF(r.left() + 3, r.bottom() - 7, r.width() - 6, 4)
+                p.fillRect(track, QColor('#2e2e2e'))
+                p.fillRect(QRectF(track.left(), track.top(), track.width() * progress, 4), QColor(t.BLUE))
             if tile.get('corrected'):
                 p.fillRect(QRectF(r.left() + 2, r.top() + 2, 13, 13), QColor(t.TEXT))
                 p.setFont(font(10, mono=True))
                 p.setPen(QColor('#111'))
                 p.drawText(QRectF(r.left() + 2, r.top() + 2, 13, 13), Qt.AlignmentFlag.AlignCenter, '±')
+            if tile.get('borrowed'):
+                badge = QRectF(r.right() - 20, r.top() + 2, 18, 12)
+                p.fillRect(badge, QColor('#141414'))
+                p.setPen(QColor('#cfcfcf'))
+                p.drawRect(badge)
+                p.setFont(font(9, mono=True))
+                p.setPen(QColor(t.TEXT))
+                p.drawText(badge, Qt.AlignmentFlag.AlignCenter, 'FB')
             p.setFont(font(12, QFont.Weight.DemiBold if tile['selected'] else QFont.Weight.Normal, mono=True))
             p.setPen(QColor('#ffffff' if tile['selected'] else t.FAINT if state == 'empty' else '#a8a8a8'))
             p.drawText(QRectF(x, 78, self.TILE, 14), Qt.AlignmentFlag.AlignLeft, str(tile['n']))
             p.setPen(QColor(tile.get('export_color', t.FAINT)))
             p.drawText(QRectF(x, 78, self.TILE, 14), Qt.AlignmentFlag.AlignRight, tile.get('export', ''))
+            p.setOpacity(1)
             x += self.TILE + 6
 
 

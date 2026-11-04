@@ -16,18 +16,28 @@ from . import multiexposure, pnm, scanner
 from .files import save_json, save_npy
 
 
-def scan_preview(device, path, run=scanner.run):
-    """Scan the loaded frame at preview resolution; returns the image as a memmap."""
-    run(scanner.preview_arguments(device, path), scanner.PREVIEW_TIMEOUT)
+def scan_preview(device, path, run=scanner.run, progress=None):
+    """Scan the loaded frame at preview resolution; returns the image as a memmap.
+
+    progress(fraction) follows the scan.
+    """
+    run(scanner.preview_arguments(device, path), scanner.PREVIEW_TIMEOUT, progress)
     return pnm.read(path)
 
 
-def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run):
+def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run, progress=None):
     """Scan the loaded frame into the new, empty `directory`; returns the scan report.
 
     A frame is loaded only once, so a failed multi-exposure merge or dust
     detection falls back and is recorded instead of failing the frame.
+    progress(fraction, pass, passes) follows the scan; pass is None while the
+    passes are merged and checked for dust.
     """
+    count = 2 if multi_exposure else 1
+
+    def stage(index):
+        # The passes take the first 90 %; merging and dust detection the rest.
+        return progress and (lambda f: progress((index + f) / count * .9, index + 1, count))
     directory = Path(directory)
     directory.mkdir(parents=True)
     passes = directory / '.durchlaeufe'
@@ -35,7 +45,7 @@ def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run):
     report = {'dpi': scanner.RAW_DPI, 'infrared': infrared, 'multi_exposure': multi_exposure}
     try:
         reference_path = passes / '1.pnm'
-        log = run(scanner.raw_arguments(device, reference_path, infrared=infrared), scanner.RAW_TIMEOUT)
+        log = run(scanner.raw_arguments(device, reference_path, infrared=infrared), scanner.RAW_TIMEOUT, stage(0))
         data = pnm.read(reference_path)
         if data.shape[2] != (4 if infrared else 3):
             raise scanner.ScannerError('Der Scanner lieferte unerwartete Farbkanäle.')
@@ -47,11 +57,15 @@ def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run):
                 report['reference'] = scanner.telemetry(log)
                 longer = multiexposure.longer_pass(report['reference'], scanner.capabilities(scanner.options(device, run)))
                 longer_path = passes / '2.pnm'
-                log = run(scanner.raw_arguments(device, longer_path, manual=longer['settings']), scanner.RAW_TIMEOUT)
+                log = run(scanner.raw_arguments(device, longer_path, manual=longer['settings']), scanner.RAW_TIMEOUT, stage(1))
                 scanner.verify_settings(scanner.telemetry(log), longer['settings'])
+                if progress:
+                    progress(.9, None, count)
                 raw, report['merge'] = multiexposure.merge(reference, pnm.read(longer_path)[..., :3], longer['ratios'])
             except ValueError as exc:
                 report['merge'] = {'status': 'skipped', 'reason': str(exc)}
+        if progress:
+            progress(.9, None, count)
         if raw is None:
             raw = np.asarray(reference, np.float32)
         save_npy(directory / 'rohscan.npy', raw)

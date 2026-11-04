@@ -10,9 +10,8 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import capture, develop, export, scanner
+from .. import capture, develop, export, frames, scanner
 from .. import roll as rolls
-from ..files import save_npy
 from . import i18n
 from . import theme as t
 from .i18n import tr
@@ -27,8 +26,9 @@ BUSY = ('preview_run', 'raw')
 
 
 class Bridge(QObject):
-    """Delivers worker-thread results to the GUI thread."""
+    """Delivers worker-thread results and scan progress to the GUI thread."""
     done = Signal(object, object, object)
+    progress = Signal(float, object, object)
 
 
 def number(value, unit=''):
@@ -56,6 +56,7 @@ class MainWindow(QMainWindow):
         self.resize(1600, 1000)
         self.bridge = Bridge()
         self.bridge.done.connect(lambda callback, result, error: callback(result, error))
+        self.bridge.progress.connect(self.scan_progress)
         self.scan_pool, self.export_pool, self.probe_pool = (ThreadPoolExecutor(1) for _ in range(3))
         self.work = tempfile.TemporaryDirectory(prefix='proscan-')
         self.roll = None
@@ -69,11 +70,18 @@ class MainWindow(QMainWindow):
         self.cropping = None
         self.preview = None
         self.failure = ''
+        self.progress = None  # (fraction, pass, passes) of the running scan
         self.rescanning = False
         self.form = None
         self.raw_cache = {}
         self.images = {}
         self.thumbs = {}
+        self.auto = {}           # n -> (key, auto correction)
+        self.choosing = None     # frame whose film base is being tried while choosing one (B)
+        self.dirty = set()       # frames whose exports wait for the export timer
+        self.export_timer = QTimer(self)
+        self.export_timer.setSingleShot(True)
+        self.export_timer.timeout.connect(self.flush_exports)
         self.undo, self.redo = {}, {}
         self.exports = {}
 
@@ -193,16 +201,24 @@ class MainWindow(QMainWindow):
         self.raw_cache.clear()
         self.images.clear()
         self.thumbs.clear()
+        self.auto.clear()
         self.undo.clear()
         self.redo.clear()
         self.exports.clear()
+        self.dirty.clear()
+        self.choosing = None
         for frame in roll.frames:
             # Frames scanned from the command line carry no correction or crop yet.
             frame.setdefault('correction', dict(develop.AUTO))
-            if 'crop' not in frame:
-                frame['crop'] = develop.default_crop(np.load(roll.frame_dir(frame['number']) / 'rohscan.npy', mmap_mode='r').shape)
-            if (roll.export_folder / (export.file_stem(roll, frame['number']) + '.dng')).exists():
-                self.exports[frame['number']] = ('ok', '', 'DNG')
+            if 'size' not in frame:
+                frame['size'] = list(np.load(roll.frame_dir(frame['number']) / 'rohscan.npy', mmap_mode='r').shape[:2])
+            frame.setdefault('crop', develop.default_crop(frame['size']))
+            frames.measured_base(roll, frame['number'])
+            suffixes = {'TIFF': '.tif', 'JPEG': '.jpg', 'DNG': '.dng'}
+            names = export.formats(roll)
+            if names and all((roll.export_folder / (export.file_stem(roll, frame['number']) + suffixes[f])).exists() for f in names):
+                self.exports[frame['number']] = ('ok', '', ', '.join(names))
+        roll.save()
         self.sel = roll.frames[-1]['number'] if roll.frames else None
         self.step = 'load'
         self.grid = False
@@ -227,10 +243,16 @@ class MainWindow(QMainWindow):
                                           f'{len(self.roll.frames)} {tr("cf_count")}. {tr("cf_keep")}')
             if answer != QMessageBox.StandardButton.Yes:
                 details['film_type'] = self.roll.details['film_type']
-        export_changed = settings['export'] != self.roll.settings['export'] or details['film_type'] != self.roll.details['film_type']
+        self.apply_settings(details, settings)
+
+    def apply_settings(self, details, settings):
+        """Store edited roll settings; new export settings (a new folder too) re-export every frame there."""
+        export_changed = (settings['export'] != self.roll.settings['export'] or settings['look'] != self.roll.settings['look']
+                          or details['film_type'] != self.roll.details['film_type'])
         self.roll.details, self.roll.settings = details, settings
         self.roll.save()
         self.images.clear()
+        self.thumbs.clear()
         if export_changed:
             for frame in self.roll.frames:
                 self.export(frame['number'])
@@ -248,11 +270,19 @@ class MainWindow(QMainWindow):
         self.target = self.target if rescan else len(self.roll.frames) + 1
         self.step = 'preview_run'
         self.rescanning = rescan
+        self.progress = (0., None, None)
         path = Path(self.work.name) / 'vorschau.pnm'
-        self.run(self.scan_pool, lambda: capture.scan_preview(self.device, path), self.preview_done)
+        report = lambda f: self.bridge.progress.emit(f, None, None)
+        self.run(self.scan_pool, lambda: capture.scan_preview(self.device, path, progress=report), self.preview_done)
         self.refresh()
 
+    def scan_progress(self, fraction, index, count):
+        if self.step in BUSY:
+            self.progress = (fraction, index, count)
+            self.refresh()
+
     def preview_done(self, preview, error):
+        self.progress = None
         if error:
             return self.scan_failed(error)
         image = (np.clip(np.asarray(preview[..., :3], np.float32) / 65535, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)
@@ -263,10 +293,12 @@ class MainWindow(QMainWindow):
     def confirm_preview(self):
         self.step = 'raw'
         self.scanner_state = 'busy'
+        self.progress = (0., 1, 2 if self.roll.settings['multi_exposure'] else 1)
         roll, n, device = self.roll, self.target, self.device
 
         def scan(directory):
-            return capture.scan_raw(device, directory, infrared=roll.infrared, multi_exposure=roll.settings['multi_exposure'])
+            return capture.scan_raw(device, directory, infrared=roll.infrared, multi_exposure=roll.settings['multi_exposure'],
+                                    progress=self.bridge.progress.emit)
 
         if self.rescanning:
             self.run(self.scan_pool, lambda: roll.rescan_frame(n, scan), self.raw_done)
@@ -275,19 +307,26 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def raw_done(self, result, error):
+        self.progress = None
         if error:
             return self.scan_failed(error)
         self.scanner_state = 'ok'
         n = self.target
-        if not self.rescanning:
-            shape = np.load(self.roll.frame_dir(n) / 'rohscan.npy', mmap_mode='r').shape
+        # The frame's size, kept so drawing never has to open its raw scan (which a rescan briefly moves).
+        size = list(np.load(self.roll.frame_dir(n) / 'rohscan.npy', mmap_mode='r').shape[:2])
+        if self.rescanning:
+            self.frame(n)['size'] = size
+        else:
             previous = self.roll.frames[-1].get('crop') if self.roll.frames else None
-            self.roll.frames.append({'number': n, 'correction': dict(develop.AUTO),
-                                     'crop': dict(previous) if previous else develop.default_crop(shape)})
-            self.roll.save()
-        self.raw_cache.pop(n, None)
-        self.images.pop(n, None)
-        self.thumbs.pop(n, None)
+            # The previous crop carries over, its quarter turn does not: every photo has its own orientation.
+            crop = {**previous, 'turn': 0} if previous else develop.default_crop(size)
+            self.roll.frames.append({'number': n, 'size': size, 'correction': dict(develop.AUTO), 'crop': crop})
+        for cache in (self.raw_cache, self.images, self.thumbs, self.auto):
+            cache.pop(n, None)
+        # A new scan gets its own film base measurement; a source picked by hand (B) stays.
+        chosen = self.frame(n).get('film_base', {}).get('from')
+        self.frame(n)['film_base'] = {'measured': develop.measure_film_base(self.raw(n)), 'from': chosen}
+        self.roll.save()
         self.sel = n
         self.step = 'load'
         self.rescanning = False
@@ -295,6 +334,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def scan_failed(self, error):
+        self.progress = None
         self.failure = str(error)
         self.scanner_state = 'err' if isinstance(error, scanner.ScannerHung) else ('ok' if self.device else 'off')
         self.step = 'fail'
@@ -329,18 +369,29 @@ class MainWindow(QMainWindow):
     # --- exports -------------------------------------------------------------------------------
 
     def export(self, n):
-        # shortcut: only the DNG exists, and it does not depend on corrections; re-export on correction once TIFF/JPEG exist
-        if not self.roll.settings['export']['dng']:
+        """Export frame n now, from a snapshot of the roll so later corrections cannot change it half-way."""
+        self.dirty.discard(n)
+        names = export.formats(self.roll)
+        if not names:
             self.exports.pop(n, None)
             return
-        self.exports[n] = ('pending',)
-        roll = self.roll
+        self.exports[n] = ('pending', '', ', '.join(names))
+        roll, snapshot = self.roll, copy.deepcopy(self.roll)
 
         def done(_, error):
-            if roll is self.roll:
-                self.exports[n] = ('fail', str(error)) if error else ('ok', datetime.now().strftime('%H:%M'), 'DNG')
+            if roll is self.roll and self.exports.get(n, ('',))[0] == 'pending':
+                self.exports[n] = ('fail', str(error), '') if error else ('ok', datetime.now().strftime('%H:%M'), ', '.join(names))
                 self.refresh()
-        self.run(self.export_pool, lambda: export.export_frame(roll, n), done)
+        self.run(self.export_pool, lambda: export.export_frame(snapshot, n), done)
+
+    def export_later(self, n):
+        """Export once the user stops adjusting the frame for 2 s, or moves to another frame."""
+        self.dirty.add(n)
+        self.export_timer.start(2000)
+
+    def flush_exports(self):
+        for n in sorted(self.dirty):
+            self.export(n)
 
     # --- frames and corrections ----------------------------------------------------------------
 
@@ -348,49 +399,70 @@ class MainWindow(QMainWindow):
         return self.roll.frames[n - 1]
 
     def raw(self, n):
-        """The frame's raw scan at screen size; kept as ansicht.npy so opening a roll never reads full scans twice."""
+        """The frame's raw scan at screen size (see frames.view), cached for the last few frames."""
         if n not in self.raw_cache:
             if len(self.raw_cache) > 8:
                 self.raw_cache.pop(next(iter(self.raw_cache)))
-            path = self.roll.frame_dir(n) / 'ansicht.npy'
-            if not path.exists():
-                save_npy(path, develop.reduce(np.load(self.roll.frame_dir(n) / 'rohscan.npy', mmap_mode='r'), 1600))
-            self.raw_cache[n] = np.load(path)
+            self.raw_cache[n] = frames.view(self.roll, n)
         return self.raw_cache[n]
 
-    def _developed(self, cache, n, raw):
+    def film_base(self, n):
+        """(rgb, source, kind) for frame n; while choosing (B), the frame being tried."""
+        if self.choosing and n == self.sel:
+            return frames.measured_base(self.roll, self.choosing), self.choosing, 'chosen'
+        return frames.film_base(self.roll, n, self.raw(n))
+
+    def development(self, n):
+        """(film base, auto correction) of frame n, the same the exports use; cached per crop, look and base."""
+        base = self.film_base(n)[0]
+        crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
+        key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base))
+        if self.auto.get(n, (None,))[0] != key:
+            self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
+        return base, self.auto[n][1]
+
+    def _developed(self, cache, n, step):
         frame = self.frame(n)
-        key = (repr(frame['correction']), repr(frame['crop']), self.roll.details['film_type'])
+        base, auto = self.development(n)
+        key = (repr(frame['correction']), repr(frame['crop']), repr(auto), self.roll.settings['look'])
         if cache.get(n, (None,))[0] != key:
-            image = develop.develop(develop.apply_crop(raw, frame['crop']), self.roll.details['film_type'], frame['correction'])
+            image = develop.develop(develop.apply_crop(self.raw(n)[::step, ::step], frame['crop']),
+                                    self.roll.details['film_type'], frame['correction'], base, self.roll.settings['look'], auto)
             cache[n] = (key, qimage(image))
         return cache[n][1]
 
     def image(self, n):
         """Developed, cropped view of frame n, cached per correction and crop."""
-        return self._developed(self.images, n, self.raw(n))
+        return self._developed(self.images, n, 1)
 
     def thumb(self, n):
-        if n not in self.raw_cache and not (self.roll.frame_dir(n) / 'ansicht.npy').exists():
-            self.raw(n)
-        small = np.load(self.roll.frame_dir(n) / 'ansicht.npy', mmap_mode='r')[::6, ::6]
-        return self._developed(self.thumbs, n, np.asarray(small, np.float32))
+        return self._developed(self.thumbs, n, 6)
 
     def select(self, n):
-        if self.roll and 1 <= n <= len(self.roll.frames) and not self.cropping:
+        if self.roll and 1 <= n <= len(self.roll.frames) and not self.cropping and not self.choosing:
+            if n != self.sel:
+                self.flush_exports()
             self.sel = n
             self.refresh()
 
-    def change(self, n, correction=None, crop=None):
+    @staticmethod
+    def edits(frame):
+        """What undo restores: correction, crop and the chosen film base source."""
+        return copy.deepcopy({key: frame[key] for key in ('correction', 'crop', 'film_base') if key in frame})
+
+    def change(self, n, **edits):
         frame = self.frame(n)
-        self.undo.setdefault(n, []).append((dict(frame['correction']), dict(frame['crop'])))
+        self.undo.setdefault(n, []).append(self.edits(frame))
         self.redo[n] = []
-        if correction is not None:
-            frame['correction'] = correction
-        if crop is not None:
-            frame['crop'] = crop
+        frame.update(edits)
         self.roll.save()
+        self.export_later(n)
         self.refresh()
+
+    def turn(self, degrees):
+        if self.can_correct():
+            crop = self.frame(self.sel)['crop']
+            self.change(self.sel, crop={**crop, 'turn': (crop.get('turn', 0) + degrees) % 360})
 
     def key_step(self, key, delta):
         if not self.can_correct() or (key in 'CMY' and self.roll.details['film_type'] == 'bw_negative'):
@@ -412,13 +484,46 @@ class MainWindow(QMainWindow):
         source, target = (self.undo, self.redo) if back else (self.redo, self.undo)
         if source.get(self.sel):
             frame = self.frame(self.sel)
-            target.setdefault(self.sel, []).append((dict(frame['correction']), dict(frame['crop'])))
-            frame['correction'], frame['crop'] = source[self.sel].pop()
+            target.setdefault(self.sel, []).append(self.edits(frame))
+            frame.update(source[self.sel].pop())
             self.roll.save()
+            self.export_later(self.sel)
             self.refresh()
 
     def can_correct(self):
-        return bool(self.roll and self.sel and self.step not in ('preview', 'preview_run', 'fail') and not self.cropping)
+        return bool(self.roll and self.sel and self.step not in ('preview', 'preview_run', 'fail')
+                    and not self.cropping and not self.choosing)
+
+    # --- choosing a film base (B) -------------------------------------------------------------------
+
+    def candidates(self):
+        """Frames that show clear film, whose film base another frame can use."""
+        return [f['number'] for f in self.roll.frames if frames.measured_base(self.roll, f['number'])]
+
+    def start_choosing(self):
+        if not self.can_correct() or self.roll.details['film_type'] == 'colour_positive' or not self.candidates():
+            return
+        source = self.film_base(self.sel)[1]
+        candidates = self.candidates()
+        self.choosing = source if source in candidates else min(candidates, key=lambda m: abs(m - self.sel))
+        self.grid = False
+        self.refresh()
+
+    def choose_key(self, key):
+        candidates = self.candidates()
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            i = candidates.index(self.choosing) + (1 if key == Qt.Key.Key_Right else -1)
+            self.choosing = candidates[max(0, min(len(candidates) - 1, i))]
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Delete):
+            n, source = self.sel, None if key == Qt.Key.Key_Delete else self.choosing
+            if source == n:
+                source = None  # its own film base is the automatic choice
+            self.choosing = None
+            self.change(n, film_base={**self.frame(n)['film_base'], 'from': source})
+            return
+        elif key == Qt.Key.Key_Escape:
+            self.choosing = None
+        self.refresh()
 
     # --- crop mode -----------------------------------------------------------------------------
 
@@ -441,7 +546,7 @@ class MainWindow(QMainWindow):
         if key == Qt.Key.Key_Escape:
             self.cropping = None
         elif key == Qt.Key.Key_Delete:
-            self.cropping = develop.default_crop(raw.shape)
+            self.cropping = {**develop.default_crop(raw.shape), 'turn': c.get('turn', 0)}
         elif event.text().lower() == 'f':
             c['free'] = not c['free']
         elif event.text() in ('[', ']'):
@@ -496,6 +601,8 @@ class MainWindow(QMainWindow):
             self.open_settings()
         elif self.cropping:
             self.crop_key(event)
+        elif self.choosing:
+            self.choose_key(key)
         elif enter and self.grid:
             self.toggle_grid()
         elif enter:
@@ -514,6 +621,10 @@ class MainWindow(QMainWindow):
             self.toggle_grid()
         elif text.lower() == 'a':
             self.start_crop()
+        elif key == Qt.Key.Key_T:
+            self.turn(-90 if mods & Qt.KeyboardModifier.ShiftModifier else 90)
+        elif key == Qt.Key.Key_B:
+            self.start_choosing()
         elif text.lower() == 'r':
             self.rescan()
         elif text == '0':
@@ -544,7 +655,7 @@ class MainWindow(QMainWindow):
         if not state:
             return '–', '#6e6e6e', tr('no_export')
         if state[0] == 'pending':
-            return '…', '#9a9a9a', tr('export_pending', formats='DNG')
+            return '…', '#9a9a9a', tr('export_pending', formats=state[2])
         if state[0] == 'fail':
             return '!', t.RED, tr('export_failed')
         return '✓', t.GREEN, tr('exported', time=state[1], formats=state[2]).replace('  ', ' ')
@@ -561,6 +672,12 @@ class MainWindow(QMainWindow):
                  'preview': tr('step_preview'), 'raw': tr('step_raw'), 'fail': tr('step_fail'),
                  'rescan_load': tr('step_rescan', n=self.target or 0), 'preview_rescan': tr('step_rescan_preview')}
         step = 'preview_rescan' if self.step == 'preview' and self.rescanning else self.step
+        if self.progress:
+            fraction, index, count = self.progress
+            pct = round(fraction * 100)
+            steps['preview_run'] = tr('step_preview_pct', pct=pct)
+            steps['raw'] = (tr('step_raw_merge', pct=pct) if index is None else tr('step_raw_pass', i=index, n=count, pct=pct)
+                            if count and count > 1 else tr('step_raw_pct', pct=pct))
         accent = {'load': t.TEXT, 'rescan_load': t.AMBER, 'preview_run': t.AMBER, 'preview': t.AMBER, 'raw': t.BLUE,
                   'fail': t.RED}.get(self.step, t.GREEN if self.device else t.RED)
         n_step = self.target if self.step != 'load' else (len(roll.frames) + 1 if has else None)
@@ -570,7 +687,8 @@ class MainWindow(QMainWindow):
             meta = ' · '.join(x for x in (d.get('film_stock'), tr(d['film_type']), tr(roll.settings['look'])) if x)
         self.header.update_state(roll.details['name'] if has else '—', meta,
                                  f'{tr("frame")} {n_step}' if has and n_step else '', steps[step] if has else tr('step_none'),
-                                 accent, *self.scanner_text(), has, self.grid, i18n.language)
+                                 accent, *self.scanner_text(), has, self.grid, i18n.language,
+                                 self.progress[0] if self.progress else None)
         self.footer.update_state(tr('foot') if has else tr('foot')[-1:], tr('autosave') if has else '')
         if not has:
             return self.render_empty()
@@ -586,7 +704,8 @@ class MainWindow(QMainWindow):
         elif self.cropping:
             frame = self.frame(self.sel)
             raw = develop.rotate(self.raw(self.sel), self.cropping['angle'])
-            image = qimage(develop.develop(raw, roll.details['film_type'], frame['correction']))
+            base, auto = self.development(self.sel)
+            image = qimage(develop.develop(raw, roll.details['film_type'], frame['correction'], base, roll.settings['look'], auto))
             self.view.show(image, 'crop', crop=self.cropping, info=(tr('crop_mode'), '  ·  '.join(
                 f'{key} {text}' for text, key in tr('crop_keys')) + '  ·  Enter / Esc'))
             self.stack.setCurrentWidget(self.view)
@@ -604,9 +723,9 @@ class MainWindow(QMainWindow):
         else:
             if self.sel:
                 frame = self.frame(self.sel)
-                raw = self.raw(self.sel)
-                full_w = np.load(roll.frame_dir(self.sel) / 'rohscan.npy', mmap_mode='r').shape
-                px = f'{round(frame["crop"]["w"] * full_w[1])} × {round(frame["crop"]["h"] * full_w[0])} px'
+                h, w = frame['size']
+                cw, ch = round(frame['crop']['w'] * w), round(frame['crop']['h'] * h)
+                px = f'{ch} × {cw} px' if frame['crop'].get('turn', 0) in (90, 270) else f'{cw} × {ch} px'
                 self.view.show(self.image(self.sel), info=(f'{tr("frame")} {self.sel} · {scanner.RAW_DPI} dpi · {px}',
                                                            self.crop_text(frame['crop'])))
             else:
@@ -616,7 +735,8 @@ class MainWindow(QMainWindow):
         self.render_strip()
 
     def crop_text(self, crop):
-        return f'{tr("free") if crop["free"] else tr("locked")} · {number(crop["angle"], "°")}'
+        text = f'{tr("free") if crop["free"] else tr("locked")} · {number(crop["angle"], "°")}'
+        return text + (f' · {tr("turned")} {crop["turn"]}°' if crop.get('turn') else '')
 
     def render_panel(self):
         locked = not self.can_correct()
@@ -626,25 +746,42 @@ class MainWindow(QMainWindow):
             frame = self.frame(self.sel)
             values, corrected, crop = frame['correction'], frame['correction'] != develop.AUTO, self.crop_text(frame['crop'])
         frame_label = f'{tr("frame")} {self.target if locked and self.step in ("preview", "fail") else self.sel or ""}'
+        film_base = None
+        if self.sel and self.step not in ('preview', 'preview_run', 'fail') and not self.cropping:
+            base, source, kind = self.film_base(self.sel)
+            if self.choosing:
+                film_base = {'title': tr('fb_from', m=source), 'action': tr('fb_choosing'), 'sub': tr('fb_choose_hint'),
+                             'keys': tr('fb_keys')}
+            elif kind in ('borrowed', 'chosen', 'estimated'):
+                film_base = {'title': tr('fb_estimated') if kind == 'estimated' else tr('fb_from', m=source),
+                             'action': tr('fb_change'), 'keys': None,
+                             'sub': {'borrowed': tr('fb_auto', n=self.sel), 'chosen': tr('fb_chosen'), 'estimated': tr('fb_none')}[kind]}
         self.panel.update_state({'frame': frame_label, 'status': '' if locked else '· ' + tr('corrected' if corrected else 'auto'),
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
                                  'bw': self.roll.details['film_type'] == 'bw_negative', 'crop': '—' if locked else crop,
-                                 'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export'))})
+                                 'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),
+                                 'film_base': film_base, 'pad': not self.choosing, 'locked_note': not self.choosing})
 
     def render_strip(self):
         tiles = []
         for frame in self.roll.frames:
             n = frame['number']
             glyph, color, _ = self.export_status(n)
-            state = 'done'
-            if self.rescanning and n == self.target and self.step in ('preview', 'raw', 'fail'):
-                state = {'preview': 'preview', 'raw': 'scanning', 'fail': 'failed'}[self.step]
+            state, progress = 'done', None
+            if self.rescanning and n == self.target and self.step in ('preview_run', 'preview', 'raw', 'fail'):
+                state = {'preview_run': 'preview', 'preview': 'preview', 'raw': 'scanning', 'fail': 'failed'}[self.step]
+                progress = self.progress[0] if self.progress else None
+            kind = self.film_base(n)[2]
             tiles.append({'n': n, 'image': self.thumb(n), 'state': state, 'selected': n == self.sel and not self.grid,
-                          'corrected': frame['correction'] != develop.AUTO, 'export': glyph, 'export_color': color})
-        if not self.rescanning:
+                          'corrected': frame['correction'] != develop.AUTO, 'export': glyph, 'export_color': color,
+                          'progress': progress, 'borrowed': kind in ('borrowed', 'chosen', 'estimated') and n != self.choosing,
+                          'candidate': self.choosing == n,
+                          'dim': bool(self.choosing) and n != self.sel and not frames.measured_base(self.roll, n)})
+        if not self.rescanning and not self.choosing:
             state = {'preview_run': 'preview', 'preview': 'preview', 'raw': 'scanning', 'fail': 'failed'}.get(self.step, 'empty')
             tiles.append({'n': len(self.roll.frames) + 1, 'image': None, 'state': state,
-                          'selected': self.step in ('preview', 'fail') or not self.sel, 'corrected': False})
+                          'selected': self.step in ('preview', 'fail') or not self.sel, 'corrected': False,
+                          'progress': self.progress[0] if self.progress else None})
         self.strip.update_state(tiles)
 
     def render_failure(self):
@@ -700,6 +837,10 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.card)
 
     def closeEvent(self, event):
-        for pool in (self.scan_pool, self.export_pool, self.probe_pool):
+        if self.roll:
+            self.flush_exports()
+        # Finish the exports already asked for; a running scan is abandoned.
+        self.export_pool.shutdown(wait=True)
+        for pool in (self.scan_pool, self.probe_pool):
             pool.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)

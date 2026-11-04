@@ -6,7 +6,9 @@ XSane's configuration cannot change what Pro Scan talks to.
 from pathlib import Path
 import os
 import re
+import select
 import subprocess
+import time
 
 ROOT = Path(__file__).resolve().parent
 SCANIMAGE = '/usr/bin/scanimage'
@@ -35,16 +37,62 @@ def environment():
     return env
 
 
-def run(args, timeout):
-    """Run scanimage; return its stderr (driver log)."""
-    try:
-        result = subprocess.run([SCANIMAGE, *args], env=environment(), capture_output=True,
-                                text=True, errors='replace', timeout=timeout)
-    except subprocess.TimeoutExpired as exc:
-        raise ScannerHung(f'Scanner reagiert seit {timeout} s nicht.') from exc
-    if result.returncode:
-        raise ScannerError(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else 'scanimage fehlgeschlagen.')
-    return result.stderr + result.stdout
+# The patched driver logs how much of the image the scanner has captured; scanimage
+# --progress then reports the transfer to the computer.
+PROGRESS = re.compile(rb'NEGATIVSTUDIO acquisition ([0-9]+)\n|Progress:\s*([0-9]+(?:\.[0-9]+)?)%')
+
+
+def _failed(log):
+    lines = log.strip().splitlines()
+    return ScannerError(lines[-1] if lines else 'scanimage fehlgeschlagen.')
+
+
+def run(args, timeout, progress=None):
+    """Run scanimage; return its stderr (driver log). `progress(fraction)` follows a scan as it runs."""
+    if progress is None:
+        try:
+            result = subprocess.run([SCANIMAGE, *args], env=environment(), capture_output=True,
+                                    text=True, errors='replace', timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise ScannerHung(f'Scanner reagiert seit {timeout} s nicht.') from exc
+        if result.returncode:
+            raise _failed(result.stderr)
+        return result.stderr + result.stdout
+    deadline = time.monotonic() + timeout
+    log = bytearray()
+    last = None
+    with subprocess.Popen([SCANIMAGE, *args], env=environment(), stdout=subprocess.DEVNULL,
+                          stderr=subprocess.PIPE) as process:
+        fd = process.stderr.fileno()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                process.kill()
+                raise ScannerHung(f'Scanner reagiert seit {timeout} s nicht.')
+            if not select.select([fd], [], [], min(remaining, 1))[0]:
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            log += chunk
+            # A message can be split between reads, so search the tail including the previous chunk's end.
+            events = list(PROGRESS.finditer(log, max(0, len(log) - len(chunk) - 64)))
+            if events:
+                acquired, transferred = events[-1].groups()
+                # shortcut: capture and transfer count half each; measure their real durations to weight them
+                value = int(acquired) / 200 if acquired else .5 + float(transferred) / 200
+                if value != last:
+                    last = value
+                    progress(min(1., value))
+        try:
+            process.wait(max(1., deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            process.kill()
+            raise ScannerHung(f'Scanner reagiert seit {timeout} s nicht.') from exc
+    text = log.decode(errors='replace')
+    if process.returncode:
+        raise _failed(text)
+    return text
 
 
 def find_device():
@@ -62,7 +110,7 @@ def _arguments(device, output, dpi):
             # The backend's own fast preview is fixed at 300 dpi; use a regular acquisition.
             '--preview=no', '--advance=no', '--clean-image=no', '--crop=None',
             '--calibration=from internal test', '--gain-adjust=* 1.0',
-            '--format=pnm', '--output-file', str(output)]
+            '--format=pnm', '--progress', '--output-file', str(output)]
 
 
 def preview_arguments(device, output):
