@@ -80,6 +80,10 @@ _Avoid_: Brightness, exposure
 Correction keys that shift a frame towards or away from cyan, magenta or yellow.
 _Avoid_: Colour sliders, RGB balance, white balance
 
+**Tone range** (Bereich: Gesamt / Lichter / Mitten / Schatten):
+The part of a frame's tones the colour keys act on: the whole frame, or mainly its highlights, midtones or shadows.
+_Avoid_: Zone, colour wheels, split toning
+
 **Gradation** (Gradation):
 The contrast character of a developed frame, chosen from fixed soft-to-hard steps.
 _Avoid_: Contrast curve, tone curve

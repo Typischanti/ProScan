@@ -1,6 +1,6 @@
 """The parts of the main screen, painted to match docs/design/Scan Screen.dc.html."""
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy,
                                QVBoxLayout, QWidget)
@@ -330,14 +330,19 @@ class CorrectionPanel(QWidget):
                 ('M', tr('magenta'), 'Num 8 / 5', s['bw']), ('Y', tr('yellow'), 'Num 9 / 6', s['bw']),
                 ('G', tr('gradation'), 'Num 3 / 1', False), ('S', tr('sharpness'), 'Num × / ÷', False)]
         y = 72
+        tone = s.get('tone')
         for key, name, keys, disabled in rows:
+            if key == 'C':
+                y = self._paint_tones(p, w, y, tone, s)
             if key == 'G':
                 p.setPen(QColor(t.LINE))
                 p.drawLine(18, y, w - 18, y)
+            if key in 'CMY' and tone:
+                name, key = f'{name} · {tr("tones")[tone]}', key + tone
             p.setOpacity(.35 if disabled else (.3 if s['locked'] else 1))
             p.setFont(font(22, QFont.Weight.DemiBold, mono=True))
             p.setPen(QColor('#cfcfcf'))
-            p.drawText(QRectF(18, y, 36, 56), Qt.AlignmentFlag.AlignVCenter, key)
+            p.drawText(QRectF(18, y, 36, 56), Qt.AlignmentFlag.AlignVCenter, key[0])
             p.setFont(font(12))
             p.setPen(QColor('#a3a3a3'))
             p.drawText(QRectF(64, y + 10, 180, 16), Qt.AlignmentFlag.AlignVCenter, name)
@@ -408,6 +413,31 @@ class CorrectionPanel(QWidget):
         if s.get('pad', True):
             self._paint_pad(p, w, s['bw'])
 
+    def _paint_tones(self, p, w, y, tone, s):
+        """Which tone range the colour keys act on (Num 2 cycles); a dot marks ranges with a correction."""
+        p.setOpacity(.35 if s['bw'] else (.3 if s['locked'] else 1))
+        names = tr('tones')
+        cell = (w - 36 - 50) / 4
+        for i, z in enumerate((None, *develop.TONES)):
+            r = QRectF(18 + i * cell, y + 2, cell - 4, 22)
+            active = z == tone
+            if active:
+                p.fillRect(r, QColor('#2e2e2e'))
+            p.setFont(font(11, QFont.Weight.DemiBold if active else QFont.Weight.Normal))
+            p.setPen(QColor('#f0f0f0' if active else '#8a8a8a'))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, names[z])
+            keys = 'CMY' if z is None else [c + z for c in 'CMY']
+            if not s['bw'] and not s['locked'] and any(s['values'].get(k) for k in keys):
+                p.setBrush(QColor('#e6e6e6'))
+                p.setPen(Qt.PenStyle.NoPen)
+                p.drawEllipse(QPointF(r.right() - 5, r.top() + 5), 2, 2)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setFont(font(11, mono=True))
+        p.setPen(QColor('#7a7a7a'))
+        p.drawText(QRectF(18, y + 2, w - 36, 22), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, 'Num 2')
+        p.setOpacity(1)
+        return y + 28
+
     def _paint_film_base(self, p, w, y, fb):
         """FB block: which frame's film base this frame uses, and B to change it."""
         keys = fb['keys'] or []
@@ -452,7 +482,7 @@ class CorrectionPanel(QWidget):
         keys = [(0, 0, 1, 1, 'Num', ''), (1, 0, 1, 1, '÷', pad['S-']), (2, 0, 1, 1, '×', pad['S+']), (3, 0, 1, 1, '−', pad['D-']),
                 (0, 1, 1, 1, '7', pad['C+']), (1, 1, 1, 1, '8', pad['M+']), (2, 1, 1, 1, '9', pad['Y+']), (3, 1, 1, 2, '+', pad['D+']),
                 (0, 2, 1, 1, '4', pad['C-']), (1, 2, 1, 1, '5', pad['M-']), (2, 2, 1, 1, '6', pad['Y-']),
-                (0, 3, 1, 1, '1', pad['G-']), (1, 3, 1, 1, '2', ''), (2, 3, 1, 1, '3', pad['G+']), (3, 3, 1, 2, '↵', pad['scan']),
+                (0, 3, 1, 1, '1', pad['G-']), (1, 3, 1, 1, '2', pad['tone']), (2, 3, 1, 1, '3', pad['G+']), (3, 3, 1, 2, '↵', pad['scan']),
                 (0, 4, 2, 1, '0', pad['auto']), (2, 4, 1, 1, ',', pad['grid'])]
         top = self.height() - 14 - 5 * 33 - 28
         p.fillRect(QRectF(0, top - 12, w, self.height() - top + 12), QColor('#1b1b1b'))
@@ -468,7 +498,7 @@ class CorrectionPanel(QWidget):
         cell = (w - 36 - 9) / 4
         for col, row, cs, rs, cap, fn in keys:
             r = QRectF(18 + col * (cell + 3), top + row * 33, cell * cs + 3 * (cs - 1), 30 * rs + 3 * (rs - 1))
-            p.setOpacity(.35 if not fn or (bw and cap in '789456') else 1)
+            p.setOpacity(.35 if not fn or (bw and cap in '7894562') else 1)
             p.setBrush(QColor(t.KEY_BG))
             p.setPen(QColor('#333'))
             p.drawRoundedRect(r, 3, 3)
@@ -671,7 +701,7 @@ class Legend(QDialog):
         for col, row, cs, rs, cap, fn in [(0, 0, 1, 1, 'Num', ''), (1, 0, 1, 1, '÷', 'S-'), (2, 0, 1, 1, '×', 'S+'), (3, 0, 1, 1, '−', 'D-'),
                                           (0, 1, 1, 1, '7', 'C+'), (1, 1, 1, 1, '8', 'M+'), (2, 1, 1, 1, '9', 'Y+'), (3, 1, 1, 2, '+', 'D+'),
                                           (0, 2, 1, 1, '4', 'C-'), (1, 2, 1, 1, '5', 'M-'), (2, 2, 1, 1, '6', 'Y-'),
-                                          (0, 3, 1, 1, '1', 'G-'), (1, 3, 1, 1, '2', ''), (2, 3, 1, 1, '3', 'G+'), (3, 3, 1, 2, 'Enter', 'scan'),
+                                          (0, 3, 1, 1, '1', 'G-'), (1, 3, 1, 1, '2', 'tone'), (2, 3, 1, 1, '3', 'G+'), (3, 3, 1, 2, 'Enter', 'scan'),
                                           (0, 4, 2, 1, '0', 'auto'), (2, 4, 1, 1, ',', 'grid')]:
             box = QWidget()
             box.setFixedSize(110 * cs + 8 * (cs - 1), 72 * rs + 8 * (rs - 1))

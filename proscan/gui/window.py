@@ -80,6 +80,7 @@ class MainWindow(QMainWindow):
         self.choosing = None     # frame whose film base is being tried while choosing one (B)
         self.dirty = set()       # frames whose exports wait for the export timer
         self.copied = None       # (frame number, correction) from Ctrl+C
+        self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
         self.notice = ''         # short confirmation shown in the footer
         self.notice_timer = QTimer(self)
         self.notice_timer.setSingleShot(True)
@@ -214,7 +215,8 @@ class MainWindow(QMainWindow):
         self.choosing = None
         for frame in roll.frames:
             # Frames scanned from the command line carry no correction or crop yet.
-            frame.setdefault('correction', dict(develop.AUTO))
+            # Older frames lack later keys (the tone ranges); missing keys are neutral.
+            frame['correction'] = {**develop.AUTO, **frame.get('correction', {})}
             if 'size' not in frame:
                 frame['size'] = list(np.load(roll.frame_dir(frame['number']) / 'rohscan.npy', mmap_mode='r').shape[:2])
             frame.setdefault('crop', develop.default_crop(frame['size']))
@@ -499,11 +501,20 @@ class MainWindow(QMainWindow):
         if not self.can_correct() or (key in 'CMY' and self.roll.details['film_type'] == 'bw_negative'):
             return
         correction = dict(self.frame(self.sel)['correction'])
+        if key in 'CMY' and self.tone:
+            key += self.tone
         low, high = develop.LIMITS[key]
         value = max(low, min(high, correction[key] + delta))
         if value != correction[key]:
             correction[key] = value
             self.change(self.sel, correction=correction)
+
+    def cycle_tone(self):
+        """Num 2: the colour keys act on the whole frame, then highlights, midtones, shadows."""
+        if self.roll.details['film_type'] != 'bw_negative':
+            order = (None, *develop.TONES)
+            self.tone = order[(order.index(self.tone) + 1) % len(order)]
+            self.render_panel()
 
     def reset_frame(self):
         if self.can_correct() and self.frame(self.sel)['correction'] != develop.AUTO:
@@ -664,6 +675,8 @@ class MainWindow(QMainWindow):
             self.rescan()
         elif text == '0':
             self.reset_frame()
+        elif text == '2':
+            self.cycle_tone()
         elif text in PAD:
             self.key_step(*PAD[text])
         else:
@@ -793,7 +806,7 @@ class MainWindow(QMainWindow):
                              'sub': {'borrowed': tr('fb_auto', n=self.sel), 'chosen': tr('fb_chosen'), 'estimated': tr('fb_none')}[kind]}
         self.panel.update_state({'frame': frame_label, 'status': '' if locked else '· ' + tr('corrected' if corrected else 'auto'),
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
-                                 'bw': self.roll.details['film_type'] == 'bw_negative', 'crop': '—' if locked else crop,
+                                 'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'crop': '—' if locked else crop,
                                  'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),
                                  'film_base': film_base, 'pad': not self.choosing, 'locked_note': not self.choosing})
 

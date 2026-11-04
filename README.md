@@ -14,7 +14,8 @@ Start: **Pro Scan** in the app menu, or `proscan` in a terminal (`~/.local/bin/p
 
 Works: the window (roll start and settings, preview with Enter/Esc, raw scan with
 infrared and multi-exposure and a progress bar, frame strip, 12-up grid, number-pad
-correction keys, crop and straighten, 90° rotation (T / Shift+T), undo per frame,
+correction keys with colour keys per tone range (Num 2: whole frame, highlights, midtones,
+shadows), crop and straighten, 90° rotation (T / Shift+T), undo per frame,
 rescan, scanner failure, German/English), the development (film base per frame,
 borrowed or chosen with B; Frontier look and faithful look for colour negative,
 black-and-white negative and colour positive), and exports: TIFF 16 bit with an

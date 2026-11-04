@@ -103,6 +103,10 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(rolls.Roll.open(w.roll.path).frames[0]['correction'], {**develop.AUTO, 'D': 2, 'C': 1})
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
         self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2})
+        for text, key in (('2', Qt.Key.Key_2), ('2', Qt.Key.Key_2), ('9', Qt.Key.Key_9)):
+            self.key(key, text)  # midtones, then yellow
+        self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2, 'Ym': 1})
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
 
         before = dict(w.frame(1)['crop'])
         self.key(Qt.Key.Key_A, 'a')

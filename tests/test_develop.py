@@ -102,6 +102,20 @@ class NegativeTests(unittest.TestCase):
         harder = developed(self.raw, correction={'G': 3})
         self.assertGreater((harder @ develop.LUMA).std(), (auto @ develop.LUMA).std())
 
+    def test_tone_range_keys(self):
+        auto = developed(self.raw)
+        dark, light = np.s_[150, 10:60], np.s_[150, 220:260]
+        shadows = developed(self.raw, correction={'Cs': 6})
+        self.assertLess(shadows[dark][..., 0].mean(), auto[dark][..., 0].mean() - .01)
+        self.assertLess(abs(shadows[light][..., 0].mean() - auto[light][..., 0].mean()),
+                        abs(shadows[dark][..., 0].mean() - auto[dark][..., 0].mean()) / 3)
+        highlights = developed(self.raw, correction={'Yh': 6})
+        self.assertLess(highlights[light][..., 2].mean(), auto[light][..., 2].mean() - .01)
+        self.assertLess(abs(highlights[dark][..., 2].mean() - auto[dark][..., 2].mean()), .005)
+        # The same step in all three ranges is the whole-frame key.
+        np.testing.assert_allclose(developed(self.raw, correction={'Mh': 4, 'Mm': 4, 'Ms': 4}),
+                                   developed(self.raw, correction={'M': 4}), atol=1e-4)
+
     def test_faithful_is_gentler_than_frontier(self):
         frontier, faithful = developed(self.raw), developed(self.raw, look='faithful')
         saturation = lambda y: float(np.mean(y.max(axis=2) - y.min(axis=2)))

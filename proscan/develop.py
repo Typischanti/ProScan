@@ -12,9 +12,13 @@ and every export show the same development.
 import cv2
 import numpy as np
 
-KEYS = ('D', 'C', 'M', 'Y', 'G', 'S')
-LIMITS = {'D': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'G': (-3, 3), 'S': (0, 5)}
-AUTO = {'D': 0, 'C': 0, 'M': 0, 'Y': 0, 'G': 0, 'S': 2}
+# Tone ranges for the colour keys: highlights, midtones, shadows; 'Ch' is cyan in the highlights.
+TONES = ('h', 'm', 's')
+TONE_KEYS = tuple(c + z for z in TONES for c in 'CMY')
+KEYS = ('D', 'C', 'M', 'Y', 'G', 'S') + TONE_KEYS
+LIMITS = {'D': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'G': (-3, 3), 'S': (0, 5),
+          **{k: (-12, 12) for k in TONE_KEYS}}
+AUTO = {'D': 0, 'C': 0, 'M': 0, 'Y': 0, 'G': 0, 'S': 2, **{k: 0 for k in TONE_KEYS}}
 D_STEP = 1 / 6        # stops per density key step: ±12 steps = ±2 stops
 COLOUR_STEP = 1 / 12  # stops per colour key step on its opposite channel
 FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative contrast (density per log exposure)
@@ -157,6 +161,14 @@ def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
         shift -= COLOUR_STEP * np.array([c['C'], c['M'], c['Y']], np.float32)
         shift += style['warmth'] * np.array([.5, 0, -.5], np.float32)
     u = np.clip((e - black + shift) / span, 0, None)
+    tones = [np.array([c[k + z] for k in 'CMY'], np.float32) for z in TONES]
+    if film_type != 'bw_negative' and any(t.any() for t in tones):
+        # Weights over the print tone (0 black .. 1 white) that sum to 1: the same step in all
+        # three ranges equals the whole-frame key.
+        tone = np.clip(np.clip(u, 0, 1) ** params['brightness'] @ LUMA, 0, 1)[..., None]
+        weights = (tone ** 2, 2 * tone * (1 - tone), (1 - tone) ** 2)
+        local = sum(w * t for w, t in zip(weights, tones))
+        u = np.clip((e - black + shift - COLOUR_STEP * local) / span, 0, None)
     if film_type == 'colour_positive' and look == 'faithful':
         # The slide's own tones: linear scan to sRGB, only the white point and D applied.
         y = _srgb_encode(np.clip(2 ** ((u - 1) * span.mean()) * .95, 0, 1))
