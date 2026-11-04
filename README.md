@@ -9,8 +9,8 @@ film area at 1600 dpi. These have not been tried on the real devices yet. Terms:
 [docs/adr/](docs/adr/). UI design: [docs/design/](docs/design/) (open
 `Pro Scan Mockups.dc.html`).
 
-Needs the Arch packages `sane`, `python-numpy`, `python-opencv`, `python-tifffile`
-and `pyside6`. The patched scanner driver ships in `proscan/driver/`.
+Installation on Linux, macOS and Windows: [INSTALL.md](INSTALL.md). The patched
+scanner driver ships in `proscan/driver/`.
 
 ## Status
 

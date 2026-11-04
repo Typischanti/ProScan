@@ -11,11 +11,12 @@ from pathlib import Path
 import os
 import re
 import select
+import shutil
 import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parent
-SCANIMAGE = '/usr/bin/scanimage'
+SCANIMAGE = shutil.which('scanimage') or '/usr/bin/scanimage'  # Homebrew puts it elsewhere on macOS
 PREVIEW_DPI = 600
 RAW_DPI = 3600
 # A hung driver must not block forever; a 3600 dpi RGBI pass takes about two minutes.
