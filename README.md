@@ -55,13 +55,14 @@ Every frame starts with an automatic correction. The number pad changes it
 | Key | Does |
 |---|---|
 | Num **+** / **−** | Density: darker / lighter |
+| **H** / **Shift+H** | Brightness: midtones lighter / darker (black and white stay) |
 | Num **7** / **4** | More / less cyan |
 | Num **8** / **5** | More / less magenta |
 | Num **9** / **6** | More / less yellow |
 | Num **2** | Colour keys act on: whole frame → highlights → midtones → shadows |
 | Num **3** / **1** | Gradation: harder / softer |
 | Num **×** / **÷** | Sharpness 0–5 (default 2) |
-| **0** | Back to the automatic correction |
+| **0** | Back to the automatic correction (the scene stays) |
 
 As at a lab: if a print looks too blue, add yellow (Num 9). If it's too dark,
 press Num −. Colour keys don't exist for black-and-white film.
@@ -75,6 +76,8 @@ Other keys:
 | **A** | Crop and straighten (see below) |
 | **T** / **Shift+T** | Turn 90° clockwise / counter-clockwise |
 | **B** | Choose which frame's film base to use |
+| **P** | Presets (see below) |
+| **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |
 | **Ctrl+C**, **Ctrl+V** | Copy a frame's correction, paste it onto another frame |
 | **Ctrl+Shift+V** | Paste it onto every frame of the roll |
@@ -98,6 +101,25 @@ Keys while cropping (after **A**):
 A new frame starts with the previous frame's crop.
 
 Everything is saved as you go; there is no save button.
+
+## Presets
+
+**P** opens a list in the panel, each entry with a small picture of the frame
+as it would look. **↑ ↓** choose, **Enter** applies, **Esc** closes.
+
+- **Scenes** shape the automatic correction for a kind of picture: Standard,
+  Portrait, Landscape, Backlit, Snow & beach, Night, Indoor light. Your key
+  values stay on top of the scene.
+- **Corrections** set the keys to fixed values: Overexposed, Underexposed,
+  Fluorescent light, Softer, Harder. The scene stays.
+- **Own presets** hold a scene and key values together. Save one from the
+  current frame with **Ctrl+S**; **Delete** in the list removes it. They are
+  kept in `~/.config/proscan/presets.json` and work in every roll.
+
+Presets apply to one frame. To use one on many frames, apply it once, then copy
+with **Ctrl+C** and paste with **Ctrl+V** or **Ctrl+Shift+V**. On
+black-and-white film, the colour-only presets (Indoor light, Fluorescent light)
+are hidden.
 
 ## Roll settings
 

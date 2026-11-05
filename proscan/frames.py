@@ -48,7 +48,8 @@ def params(roll, n, base, image=None):
     """The frame's auto correction, measured on its cropped screen-size scan (rotation does not matter)."""
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
-    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'])
+    scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')
+    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene)
 
 
 def render(roll, n):

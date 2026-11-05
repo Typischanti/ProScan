@@ -8,10 +8,10 @@ import tempfile
 
 import numpy as np
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
+from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import capture, develop, export, frames, scanner
+from .. import capture, develop, export, frames, presets, scanner
 from .. import roll as rolls
 from . import i18n
 from . import theme as t
@@ -82,6 +82,8 @@ class MainWindow(QMainWindow):
         self.dirty = set()       # frames whose exports wait for the export timer
         self.copied = None       # (frame number, correction) from Ctrl+C
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
+        self.picking = None      # index in the preset list while it is open (P)
+        self.preset_thumbs = {}  # (frame, kind, id, correction) -> QImage for the preset list
         self.notice = ''         # short confirmation shown in the footer
         self.notice_timer = QTimer(self)
         self.notice_timer.setSingleShot(True)
@@ -214,6 +216,7 @@ class MainWindow(QMainWindow):
         self.exports.clear()
         self.dirty.clear()
         self.choosing = None
+        self.picking = None
         for frame in roll.frames:
             # Frames scanned from the command line carry no correction or crop yet.
             # Older frames lack later keys (the tone ranges); missing keys are neutral.
@@ -428,7 +431,8 @@ class MainWindow(QMainWindow):
         """(film base, auto correction) of frame n, the same the exports use; cached per crop, look and base."""
         base = self.film_base(n)[0]
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
-        key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base))
+        key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
+               self.frame(n)['correction']['scene'])
         if self.auto.get(n, (None,))[0] != key:
             self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
         return base, self.auto[n][1]
@@ -451,7 +455,7 @@ class MainWindow(QMainWindow):
         return self._developed(self.thumbs, n, 6)
 
     def select(self, n):
-        if self.roll and 1 <= n <= len(self.roll.frames) and not self.cropping and not self.choosing:
+        if self.roll and 1 <= n <= len(self.roll.frames) and not self.cropping and not self.choosing and self.picking is None:
             if n != self.sel:
                 self.flush_exports()
             self.sel = n
@@ -522,8 +526,70 @@ class MainWindow(QMainWindow):
             self.render_panel()
 
     def reset_frame(self):
-        if self.can_correct() and self.frame(self.sel)['correction'] != develop.AUTO:
-            self.change(self.sel, correction=dict(develop.AUTO))
+        """0: back to the automatic correction of the frame's scene."""
+        if self.can_correct():
+            auto = {**develop.AUTO, 'scene': self.frame(self.sel)['correction']['scene']}
+            if self.frame(self.sel)['correction'] != auto:
+                self.change(self.sel, correction=auto)
+
+    # --- presets (P, Ctrl+S) -------------------------------------------------------------------------
+
+    def start_presets(self):
+        if self.can_correct():
+            self.grid = False
+            self.picking = 0
+            self.refresh()
+
+    def preset_list(self):
+        """[(kind, id, name, detail, thumbnail)] for the selected frame."""
+        frame, film_type = self.frame(self.sel), self.roll.details['film_type']
+        small = develop.apply_crop(self.raw(self.sel)[::8, ::8], frame['crop'])
+        base = self.development(self.sel)[0]
+        items = []
+        for kind, ident in presets.available(film_type):
+            correction = presets.apply(kind, ident, frame['correction'])
+            key = (self.sel, kind, ident, repr(correction), repr(frame['crop']), repr(base), self.roll.settings['look'])
+            if key not in self.preset_thumbs:
+                if len(self.preset_thumbs) > 200:
+                    self.preset_thumbs.clear()
+                self.preset_thumbs[key] = qimage(develop.develop(small, film_type, correction, base, self.roll.settings['look']))
+            if kind == 'own':
+                name, detail = ident, self.summary(correction)
+            else:
+                name, detail = tr(f'{kind}_{ident}'), (tr(f'{kind}_{ident}_hint') if kind == 'scene' else self.summary(correction))
+            items.append((kind, ident, name, detail, self.preset_thumbs[key]))
+        return items
+
+    @staticmethod
+    def summary(correction):
+        """'Porträt · D +3 · Gm +1': the scene (unless standard) and every key off its automatic value."""
+        parts = [tr('scene_' + correction['scene'])] if correction.get('scene', 'standard') != 'standard' else []
+        parts += [f'{k} {fmt(v)}' for k, v in correction.items() if k != 'scene' and v != develop.AUTO[k]]
+        return ' · '.join(parts) or tr('scene_standard')
+
+    def preset_key(self, key):
+        items = presets.available(self.roll.details['film_type'])
+        if key in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+            self.picking = max(0, min(len(items) - 1, self.picking + (1 if key == Qt.Key.Key_Down else -1)))
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            kind, ident = items[self.picking]
+            self.picking = None
+            self.change(self.sel, correction=presets.apply(kind, ident, self.frame(self.sel)['correction']))
+            return
+        elif key == Qt.Key.Key_Delete and items[self.picking][0] == 'own':
+            presets.delete_own(items[self.picking][1])
+            self.picking = min(self.picking, len(items) - 2)
+        elif key == Qt.Key.Key_Escape:
+            self.picking = None
+        self.refresh()
+
+    def save_preset(self):
+        if not self.can_correct():
+            return
+        name, ok = QInputDialog.getText(self, tr('save_preset'), tr('preset_name'))
+        if ok and name.strip():
+            presets.save_own(name.strip(), self.frame(self.sel)['correction'])
+            self.say(tr('preset_saved', name=name.strip()))
 
     def history(self, back):
         if not self.can_correct():
@@ -539,7 +605,7 @@ class MainWindow(QMainWindow):
 
     def can_correct(self):
         return bool(self.roll and self.sel and self.step not in ('preview', 'preview_run', 'fail')
-                    and not self.cropping and not self.choosing)
+                    and not self.cropping and not self.choosing and self.picking is None)
 
     # --- choosing a film base (B) -------------------------------------------------------------------
 
@@ -640,6 +706,8 @@ class MainWindow(QMainWindow):
             self.history(back=not mods & Qt.KeyboardModifier.ShiftModifier)
         elif ctrl and key == Qt.Key.Key_Y:
             self.history(back=False)
+        elif ctrl and key == Qt.Key.Key_S:
+            self.save_preset()
         elif ctrl and key == Qt.Key.Key_C:
             self.copy_correction()
         elif ctrl and key == Qt.Key.Key_V:
@@ -654,6 +722,8 @@ class MainWindow(QMainWindow):
             self.crop_key(event)
         elif self.choosing:
             self.choose_key(key)
+        elif self.picking is not None:
+            self.preset_key(key)
         elif enter and self.grid:
             self.toggle_grid()
         elif enter:
@@ -676,6 +746,10 @@ class MainWindow(QMainWindow):
             self.turn(-90 if mods & Qt.KeyboardModifier.ShiftModifier else 90)
         elif key == Qt.Key.Key_B:
             self.start_choosing()
+        elif key == Qt.Key.Key_P:
+            self.start_presets()
+        elif key == Qt.Key.Key_H:
+            self.key_step('H', -1 if mods & Qt.KeyboardModifier.ShiftModifier else 1)
         elif text.lower() == 'r':
             self.rescan()
         elif text == '0':
@@ -798,6 +872,7 @@ class MainWindow(QMainWindow):
         else:
             frame = self.frame(self.sel)
             values, corrected, crop = frame['correction'], frame['correction'] != develop.AUTO, self.crop_text(frame['crop'])
+        scene = values['scene']
         frame_label = f'{tr("frame")} {self.target if locked and self.step in ("preview", "fail") else self.sel or ""}'
         film_base = None
         if self.sel and self.step not in ('preview', 'preview_run', 'fail') and not self.cropping:
@@ -809,7 +884,12 @@ class MainWindow(QMainWindow):
                 film_base = {'title': tr('fb_estimated') if kind == 'estimated' else tr('fb_from', m=source),
                              'action': tr('fb_change'), 'keys': None,
                              'sub': {'borrowed': tr('fb_auto', n=self.sel), 'chosen': tr('fb_chosen'), 'estimated': tr('fb_none')}[kind]}
-        self.panel.update_state({'frame': frame_label, 'status': '' if locked else '· ' + tr('corrected' if corrected else 'auto'),
+        status = '' if locked else '· ' + tr('corrected' if corrected else 'auto') + (
+            f' · {tr("scene_" + scene)}' if scene != 'standard' else '')
+        picking = None
+        if self.picking is not None and not locked:
+            picking = {'items': self.preset_list(), 'selected': self.picking}
+        self.panel.update_state({'frame': frame_label, 'status': status, 'presets': picking,
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
                                  'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'crop': '—' if locked else crop,
                                  'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),

@@ -16,7 +16,7 @@ from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication, QFileDialog
 
-from proscan import capture, develop, frames, scanner
+from proscan import capture, develop, frames, presets, scanner
 from proscan import roll as rolls
 from proscan.gui import i18n
 from proscan.gui.rollform import RollForm
@@ -32,6 +32,7 @@ class GuiFlowTests(unittest.TestCase):
         root = Path(self.tmp.name)
         self.fake = FakeScanner(film(), dust=[(20, 30), (60, 90), (100, 40), (40, 130)])
         for patch in (mock.patch.object(rolls, 'ROOT', root / 'rolls'), mock.patch.object(i18n, 'SETTINGS', root / 's.json'),
+                      mock.patch.object(presets, 'OWN', root / 'presets.json'),
                       mock.patch.object(i18n, 'language', 'de'),
                       mock.patch.object(scanner, 'find_device', lambda: 'pieusb:test'),
                       mock.patch.object(capture, 'scan_preview', partial(capture.scan_preview, run=self.fake)),
@@ -107,6 +108,28 @@ class GuiFlowTests(unittest.TestCase):
             self.key(key, text)  # midtones, then yellow
         self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2, 'Ym': 1})
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+
+        # Presets: P, Down to Portrait, Enter; the keys stay. Then save as own preset and apply it later.
+        self.key(Qt.Key.Key_P, 'p')
+        items = w.preset_list()
+        self.assertEqual([i[:2] for i in items[:2]], [('scene', 'standard'), ('scene', 'portrait')])
+        self.assertTrue(all(not i[4].isNull() for i in items))  # every preset has its thumbnail
+        self.key(Qt.Key.Key_Down)
+        self.key(Qt.Key.Key_Return)
+        self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2, 'scene': 'portrait'})
+        self.key(Qt.Key.Key_H, 'h')
+        with mock.patch('proscan.gui.window.QInputDialog.getText', return_value=('Mein Porträt', True)):
+            self.key(Qt.Key.Key_S, 's', Qt.KeyboardModifier.ControlModifier)
+        self.key(Qt.Key.Key_0, '0')
+        self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'scene': 'portrait'})  # 0 keeps the scene
+        self.key(Qt.Key.Key_P, 'p')
+        for _ in range(len(w.preset_list()) - 1):
+            self.key(Qt.Key.Key_Down)
+        self.key(Qt.Key.Key_Return)
+        self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2, 'H': 1, 'scene': 'portrait'})
+        for _ in range(4):
+            self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2})
 
         before = dict(w.frame(1)['crop'])
         self.key(Qt.Key.Key_A, 'a')

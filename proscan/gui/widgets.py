@@ -326,7 +326,9 @@ class CorrectionPanel(QWidget):
         p.setOpacity(1)
         p.setPen(QColor(t.LINE))
         p.drawLine(0, 62, w, 62)
-        rows = [('D', tr('density'), 'Num + / −', False), ('C', tr('cyan'), 'Num 7 / 4', s['bw']),
+        if s.get('presets'):
+            return self._paint_presets(p, w, s['presets'])
+        rows = [('D', tr('density'), 'Num + / −', False), ('H', tr('brightness'), 'H / Shift+H', False), ('C', tr('cyan'), 'Num 7 / 4', s['bw']),
                 ('M', tr('magenta'), 'Num 8 / 5', s['bw']), ('Y', tr('yellow'), 'Num 9 / 6', s['bw']),
                 ('G', tr('gradation'), 'Num 3 / 1', False), ('S', tr('sharpness'), 'Num × / ÷', False)]
         y = 72
@@ -412,6 +414,37 @@ class CorrectionPanel(QWidget):
         p.drawText(36, y + 24, text)
         if s.get('pad', True):
             self._paint_pad(p, w, s['bw'])
+
+    def _paint_presets(self, p, w, picking):
+        """P: scenes, built-in and own presets, each with a thumbnail of the frame as it would look."""
+        p.setFont(font(12))
+        p.setPen(QColor(t.DIM))
+        p.drawText(QRectF(18, 70, w - 36, 34), Qt.TextFlag.TextWordWrap, tr('presets_hint'))
+        top, row = 112, 56
+        items, selected = picking['items'], picking['selected']
+        visible = max(1, int((self.height() - top - 8) // row))
+        # Keep the selected preset in view; sections are labelled on their first visible row.
+        first = max(0, min(selected - visible // 2, len(items) - visible))
+        sections = {'scene': tr('scenes'), 'correction': tr('corrections'), 'own': tr('own_presets')}
+        for i, (kind, _, name, detail, thumb) in enumerate(items[first:first + visible], first):
+            y = top + (i - first) * row
+            if i == selected:
+                p.fillRect(QRectF(0, y, w, row - 2), QColor('#2a2a2a'))
+                p.fillRect(QRectF(0, y, 3, row - 2), QColor('#e6e6e6'))
+            box = QRectF(18, y + 5, 66, 44)
+            scaled = thumb.scaled(66, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            p.drawImage(QPointF(box.center().x() - scaled.width() / 2, box.center().y() - scaled.height() / 2), scaled)
+            p.setFont(font(13, QFont.Weight.DemiBold if i == selected else QFont.Weight.Normal))
+            p.setPen(QColor('#f0f0f0' if i == selected else '#c8c8c8'))
+            p.drawText(QRectF(96, y + 6, w - 114, 20), Qt.AlignmentFlag.AlignVCenter, name)
+            p.setFont(font(11))
+            p.setPen(QColor('#8a8a8a'))
+            p.drawText(QRectF(96, y + 27, w - 114, 18), Qt.AlignmentFlag.AlignVCenter,
+                       p.fontMetrics().elidedText(detail, Qt.TextElideMode.ElideRight, int(w - 114)))
+            if i == first or items[i - 1][0] != kind:
+                p.setFont(font(10))
+                p.setPen(QColor(t.DIM))
+                p.drawText(QRectF(18, y - 2, w - 36, 12), Qt.AlignmentFlag.AlignRight, sections[kind].upper())
 
     def _paint_tones(self, p, w, y, tone, s):
         """Which tone range the colour keys act on (Num 2 cycles); a dot marks ranges with a correction."""

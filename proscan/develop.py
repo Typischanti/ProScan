@@ -15,10 +15,12 @@ import numpy as np
 # Tone ranges for the colour keys: highlights, midtones, shadows; 'Ch' is cyan in the highlights.
 TONES = ('h', 'm', 's')
 TONE_KEYS = tuple(c + z for z in TONES for c in 'CMY')
-KEYS = ('D', 'C', 'M', 'Y', 'G', 'S') + TONE_KEYS
-LIMITS = {'D': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'G': (-3, 3), 'S': (0, 5),
+KEYS = ('D', 'H', 'C', 'M', 'Y', 'G', 'S') + TONE_KEYS
+LIMITS = {'D': (-12, 12), 'H': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'G': (-3, 3), 'S': (0, 5),
           **{k: (-12, 12) for k in TONE_KEYS}}
-AUTO = {'D': 0, 'C': 0, 'M': 0, 'Y': 0, 'G': 0, 'S': 2, **{k: 0 for k in TONE_KEYS}}
+# 'scene' is part of the correction, so copying, undo and the exports carry it with the keys.
+AUTO = {'scene': 'standard', 'D': 0, 'H': 0, 'C': 0, 'M': 0, 'Y': 0, 'G': 0, 'S': 2, **{k: 0 for k in TONE_KEYS}}
+H_STEP = 1 / 12  # midtone brightness: the print gamma changes by 2^(-H/12), black and white stay put
 D_STEP = 1 / 6        # stops per density key step: ±12 steps = ±2 stops
 COLOUR_STEP = 1 / 12  # stops per colour key step on its opposite channel
 FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative contrast (density per log exposure)
@@ -28,6 +30,17 @@ LOOKS = {
     # contrast: steepness of the print S-curve; saturation: chroma gain; warmth: stops towards red/yellow.
     'frontier': {'balance': .75, 'contrast': 4.5, 'saturation': 1.15, 'warmth': .06},
     'faithful': {'balance': .45, 'contrast': 3., 'saturation': 1., 'warmth': 0.},
+}
+# Scenes adjust the auto correction for a kind of picture. target: where the auto correction aims the
+# median tone (.42 standard); contrast, saturation: factors on the look's; warmth: stops added to the look's.
+SCENES = {
+    'standard': {},
+    'portrait': {'contrast': .85, 'saturation': .9, 'warmth': .04},
+    'landscape': {'contrast': 1.1, 'saturation': 1.15},
+    'backlit': {'target': .52, 'contrast': .9},
+    'snow': {'target': .62},
+    'night': {'target': .26},
+    'indoor': {'warmth': -.15},  # the orange of bulb light; colour film only
 }
 LUMA = np.array([.2126, .7152, .0722], np.float32)
 
@@ -120,7 +133,7 @@ def _stops(raw, film_type, base):
     return e
 
 
-def analyse(raw, film_type, base, look):
+def analyse(raw, film_type, base, look, scene='standard'):
     """The frame's auto correction (JSON-able): per-channel black and white points in stops, and a brightness.
 
     `raw` is the cropped, screen-size scan. Like a print, the clearest film
@@ -137,8 +150,9 @@ def analyse(raw, film_type, base, look):
     white = np.maximum(white, black + 1.)  # never stretch less than one stop to full range
     u = np.clip((e - black) / (white - black), 1e-4, 1)
     median = float(np.median(u @ LUMA))
-    # Gamma that would put the median at 0.42, applied only partly, as a lab scanner's auto density does.
-    brightness = float(np.clip((np.log(.42) / np.log(max(median, 1e-3))) ** .7, .35, 1.6))
+    # Gamma that would put the median at the target (0.42), applied only partly, as a lab scanner's auto density does.
+    target = SCENES[scene].get('target', .42)
+    brightness = float(np.clip((np.log(target) / np.log(max(median, 1e-3))) ** .7, .35, 1.6))
     return {'black': [float(v) for v in black], 'white': [float(v) for v in white], 'brightness': brightness}
 
 
@@ -151,7 +165,12 @@ def _print_curve(v, strength):
 def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
     """Display-ready sRGB-encoded float32 image (0..1) of `raw` with the frame's auto correction and keys."""
     c = {**AUTO, **correction}
-    style = LOOKS[look]
+    scene = SCENES[c['scene']]
+    style = dict(LOOKS[look])
+    style['contrast'] *= scene.get('contrast', 1)
+    style['saturation'] *= scene.get('saturation', 1)
+    style['warmth'] += scene.get('warmth', 0)
+    gamma = params['brightness'] * 2 ** (-H_STEP * c['H'])
     black = np.asarray(params['black'], np.float32)
     span = np.asarray(params['white'], np.float32) - black
     e = _stops(raw, film_type, base)
@@ -165,15 +184,15 @@ def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
     if film_type != 'bw_negative' and any(t.any() for t in tones):
         # Weights over the print tone (0 black .. 1 white) that sum to 1: the same step in all
         # three ranges equals the whole-frame key.
-        tone = np.clip(np.clip(u, 0, 1) ** params['brightness'] @ LUMA, 0, 1)[..., None]
+        tone = np.clip(np.clip(u, 0, 1) ** gamma @ LUMA, 0, 1)[..., None]
         weights = (tone ** 2, 2 * tone * (1 - tone), (1 - tone) ** 2)
         local = sum(w * t for w, t in zip(weights, tones))
         u = np.clip((e - black + shift - COLOUR_STEP * local) / span, 0, None)
     if film_type == 'colour_positive' and look == 'faithful':
         # The slide's own tones: linear scan to sRGB, only the white point and D applied.
-        y = _srgb_encode(np.clip(2 ** ((u - 1) * span.mean()) * .95, 0, 1))
+        y = _srgb_encode(np.clip(2 ** ((u - 1) * span.mean()) * .95, 0, 1)) ** (2 ** (-H_STEP * c['H']))
     else:
-        v = np.clip(u ** params['brightness'], 0, 1.2)
+        v = np.clip(u ** gamma, 0, 1.2)
         y = _print_curve(v, style['contrast'] * (1 + .12 * c['G']))
     if film_type != 'bw_negative' and style['saturation'] != 1:
         luma = (y @ LUMA)[..., None]
@@ -205,5 +224,5 @@ def develop(raw, film_type, correction=AUTO, base=None, look='frontier', params=
     """8-bit sRGB positive of float32 linear `raw` (scanner counts); measures what it is not given."""
     if base is None and film_type != 'colour_positive':
         base = measure_film_base(raw) or estimate_film_base(raw)
-    params = params or analyse(raw, film_type, base, look)
+    params = params or analyse(raw, film_type, base, look, {**AUTO, **correction}['scene'])
     return (render(raw, film_type, base, params, correction, look) * 255 + .5).astype(np.uint8)

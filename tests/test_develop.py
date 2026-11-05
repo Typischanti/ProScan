@@ -116,6 +116,29 @@ class NegativeTests(unittest.TestCase):
         np.testing.assert_allclose(developed(self.raw, correction={'Mh': 4, 'Mm': 4, 'Ms': 4}),
                                    developed(self.raw, correction={'M': 4}), atol=1e-4)
 
+    def test_midtone_brightness_keeps_black_and_white(self):
+        auto, lighter = developed(self.raw), developed(self.raw, correction={'H': 6})
+        luma = lambda y: y[150] @ develop.LUMA
+        self.assertGreater(luma(lighter)[len(luma(auto)) // 2], luma(auto)[len(luma(auto)) // 2] + .05)
+        self.assertAlmostEqual(luma(lighter)[2], luma(auto)[2], delta=.02)
+        self.assertAlmostEqual(luma(lighter)[-3], luma(auto)[-3], delta=.02)
+
+    def test_scenes(self):
+        def scene(name):
+            cropped = develop.apply_crop(self.raw, INNER)
+            base = develop.measure_film_base(self.raw)
+            return develop.render(cropped, 'colour_negative', base, develop.analyse(cropped, 'colour_negative', base, 'frontier', name),
+                                  {'scene': name}, 'frontier')
+        mean = lambda y: float((y @ develop.LUMA).mean())
+        saturation = lambda y: float(np.mean(y.max(axis=2) - y.min(axis=2)))
+        standard = scene('standard')
+        self.assertGreater(mean(scene('snow')), mean(standard) + .03)
+        self.assertLess(mean(scene('night')), mean(standard) - .03)
+        self.assertLess(saturation(scene('portrait')), saturation(standard))
+        self.assertGreater(saturation(scene('landscape')), saturation(standard))
+        indoor = scene('indoor')
+        self.assertLess(indoor[..., 0].mean() - indoor[..., 2].mean(), standard[..., 0].mean() - standard[..., 2].mean())
+
     def test_faithful_is_gentler_than_frontier(self):
         frontier, faithful = developed(self.raw), developed(self.raw, look='faithful')
         saturation = lambda y: float(np.mean(y.max(axis=2) - y.min(axis=2)))

@@ -73,8 +73,12 @@ The operator's adjustment of one frame, expressed in fixed key steps relative to
 _Avoid_: Edit, adjustment, settings
 
 **Density** (Dichte, D):
-How light or dark a developed frame is; one of the correction keys.
-_Avoid_: Brightness, exposure
+How light or dark a developed frame is as a whole; one of the correction keys.
+_Avoid_: Exposure
+
+**Brightness** (Helligkeit, H):
+How light the midtones of a developed frame are, with black and white left where they are; one of the correction keys.
+_Avoid_: Gamma, Density
 
 **Colour keys** (Farbtasten C / M / Y):
 Correction keys that shift a frame towards or away from cyan, magenta or yellow.
@@ -83,6 +87,14 @@ _Avoid_: Colour sliders, RGB balance, white balance
 **Tone range** (Bereich: Gesamt / Lichter / Mitten / Schatten):
 The part of a frame's tones the colour keys act on: the whole frame, or mainly its highlights, midtones or shadows.
 _Avoid_: Zone, colour wheels, split toning
+
+**Scene** (Szene):
+The kind of picture a frame shows (portrait, landscape, night …), which shapes its auto correction; one per frame, Standard by default.
+_Avoid_: Mode, filter
+
+**Preset** (Voreinstellung):
+A named scene, set of correction key values, or both, applied to a frame in one step. Built-in or the user's own.
+_Avoid_: Profile, template, style
 
 **Gradation** (Gradation):
 The contrast character of a developed frame, chosen from fixed soft-to-hard steps.
