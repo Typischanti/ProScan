@@ -6,13 +6,14 @@ from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QProgr
                                QVBoxLayout, QWidget)
 
 from .. import develop
+from . import monitor
 from . import theme as t
 from .i18n import tr
 
 
 def qimage(array):
-    """QImage copy of a (h, w, 3) uint8 RGB array."""
-    array = np.ascontiguousarray(array)
+    """QImage copy of a (h, w, 3) uint8 sRGB array, converted for the monitor (see monitor.py)."""
+    array = np.ascontiguousarray(monitor.to_screen(array))
     h, w = array.shape[:2]
     return QImage(array.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
 

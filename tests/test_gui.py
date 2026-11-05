@@ -29,6 +29,8 @@ app = QApplication.instance() or QApplication([])
 class GuiFlowTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        # Registered first, so it runs last: after close_window has let running exports finish.
+        self.addCleanup(self.tmp.cleanup)
         root = Path(self.tmp.name)
         self.fake = FakeScanner(film(), dust=[(20, 30), (60, 90), (100, 40), (40, 130)])
         for patch in (mock.patch.object(rolls, 'ROOT', root / 'rolls'), mock.patch.object(i18n, 'SETTINGS', root / 's.json'),
@@ -54,9 +56,6 @@ class GuiFlowTests(unittest.TestCase):
         self.w.deleteLater()
         app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
-
-    def tearDown(self):
-        self.tmp.cleanup()
 
     def wait(self, condition, timeout=30):
         end = time.time() + timeout
