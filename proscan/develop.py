@@ -35,12 +35,12 @@ LOOKS = {
 # median tone (.42 standard); contrast, saturation: factors on the look's; warmth: stops added to the look's.
 SCENES = {
     'standard': {},
-    'portrait': {'contrast': .85, 'saturation': .9, 'warmth': .04},
-    'landscape': {'contrast': 1.1, 'saturation': 1.15},
-    'backlit': {'target': .52, 'contrast': .9},
-    'snow': {'target': .62},
-    'night': {'target': .26},
-    'indoor': {'warmth': -.15},  # the orange of bulb light; colour film only
+    'portrait': {'contrast': .72, 'saturation': .82, 'warmth': .08},
+    'landscape': {'contrast': 1.22, 'saturation': 1.32},
+    'backlit': {'target': .58, 'contrast': .78},  # lighter and softer: opens up the dark subject
+    'snow': {'target': .68, 'contrast': 1.05},    # lighter, but keeps its sparkle
+    'night': {'target': .2},
+    'indoor': {'warmth': -.3},  # the orange of bulb light; colour film only
 }
 LUMA = np.array([.2126, .7152, .0722], np.float32)
 
