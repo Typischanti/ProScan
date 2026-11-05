@@ -161,8 +161,14 @@ class ImageView(QWidget):
         p.setFont(font(12, mono=True))
         p.setPen(QColor('#7a7a7a'))
         below = QRectF(target.left(), target.bottom() + 8, target.width(), 20)
-        p.drawText(below, Qt.AlignmentFlag.AlignLeft, self.info[0])
-        p.drawText(below, Qt.AlignmentFlag.AlignRight, self.info[1])
+        metrics = p.fontMetrics()
+        if metrics.horizontalAdvance(self.info[0]) + metrics.horizontalAdvance(self.info[1]) + 24 <= target.width():
+            p.drawText(below, Qt.AlignmentFlag.AlignLeft, self.info[0])
+            p.drawText(below, Qt.AlignmentFlag.AlignRight, self.info[1])
+        else:
+            # A portrait frame is too narrow for both ends: one line, centred under it.
+            below = QRectF(area.left(), below.top(), area.width(), 20)
+            p.drawText(below, Qt.AlignmentFlag.AlignHCenter, '  ·  '.join(x for x in self.info if x))
         if self.mode == 'preview':
             self._paint_preview(p, target)
         elif self.mode == 'crop' and self.crop:
