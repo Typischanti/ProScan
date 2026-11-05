@@ -192,6 +192,20 @@ class MultiExposureTests(unittest.TestCase):
         inner = np.s_[4:-4, 4:-4]
         np.testing.assert_allclose(merged[inner], truth[inner], rtol=.002, atol=2)
 
+    def test_dim_blue_of_an_orange_mask_is_used(self):
+        # Kodak Gold 200 at the scanner's own exposure: blue stays below about 7 % of full scale.
+        truth = film((400, 600)) * np.array([.5, .23, .085])
+        ratios = [1.70, 2.29, 3.19]
+        noise = np.random.default_rng(8)
+        reference = counts(truth + noise.normal(0, 60, truth.shape))
+        longer = counts(np.roll(truth * ratios, SHIFT, (0, 1)) + noise.normal(0, 60, truth.shape))
+        self.assertLess(reference[..., 2].max(), .075 * 65535)
+        merged, report = multiexposure.merge(reference, longer, ratios)
+        self.assertEqual(report['used_channels'], list('RGB'), report['channel_reasons'])
+        inner = np.s_[8:-8, 8:-8, 2]
+        # The longer pass carries most of the blue, so its noise drops by about the exposure ratio.
+        self.assertLess(np.std(merged[inner] - truth[inner]), np.std(reference[inner] - truth[inner]) / 2)
+
     def test_channel_that_ignored_the_exposure_is_not_used(self):
         truth = scene()
         actual = [3.3, 2.4, 1.0]  # blue did not get longer

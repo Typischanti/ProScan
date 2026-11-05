@@ -134,7 +134,9 @@ def alignment(reference, moving, ratios, max_shift=12):
     measured, valid_channels, reasons = [], [], []
     for c in range(3):
         a, b = samples[..., c], shifted[..., c]
-        mask = (a > .05) & (a < .85) & (b > .05) & (b < .85)
+        # From 2 %: behind an orange mask blue reaches only about 7 % of full scale, and a 5 % floor
+        # left a sliver of nearly flat, noisy values that never correlated.
+        mask = (a > .02) & (a < .85) & (b > .02) & (b < .85)
         ratio, reason = None, None
         if np.count_nonzero(mask) < 100:
             reason = 'Zu wenig gemeinsame Mitteltöne zur Belichtungsprüfung.'
