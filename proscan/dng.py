@@ -22,7 +22,7 @@ def xmp(details, number):
     fields = [details.get('film_stock'), details.get('iso') and f'ISO {details["iso"]}', details.get('push_pull'),
               details.get('camera'), details.get('lens'), details.get('date'), details.get('developed_by')]
     text = ' · '.join(str(f) for f in fields if f)
-    title = escape(f'{details["name"]} · Bild {number}')
+    title = escape(details['name'] if number is None else f'{details["name"]} · Bild {number}')
     return ('<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>'
             '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
             '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">'

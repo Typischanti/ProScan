@@ -2,7 +2,8 @@
 import cv2
 import numpy as np
 import tifffile
-from PySide6.QtGui import QColorSpace
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QColorSpace, QFont, QImage, QPainter
 
 from . import capture, develop, dng, frames
 from .files import atomic
@@ -65,6 +66,51 @@ def write_jpeg(path, image, xmp):
     extra = segment(0xE1, b'http://ns.adobe.com/xap/1.0/\x00' + xmp) + segment(0xE2, b'ICC_PROFILE\x00\x01\x01' + icc('srgb'))
     with atomic(path) as temporary:
         temporary.write_bytes(data[:2].tobytes() + extra + data[2:].tobytes())
+
+
+SHEET_COLUMNS, SHEET_TILE = 6, 420  # like a 35 mm strip of six; square boxes fit upright and lying frames alike
+
+
+def contact_sheet(roll):
+    """One JPEG of the whole roll in the export folder, as developed now; returns its path."""
+    count = len(roll.frames)
+    tile_w = tile_h = SHEET_TILE
+    gap, label, head = 24, 30, 110
+    rows = max(1, -(-count // SHEET_COLUMNS))
+    width = SHEET_COLUMNS * (tile_w + gap) + gap
+    sheet = np.full((head + rows * (tile_h + label + gap) + gap, width, 3), 20, np.uint8)
+    places = []
+    for i in range(count):
+        image = frames.preview(roll, i + 1)
+        scale = min(tile_w / image.shape[1], tile_h / image.shape[0])
+        image = cv2.resize(image, (round(image.shape[1] * scale), round(image.shape[0] * scale)), interpolation=cv2.INTER_AREA)
+        x = gap + i % SHEET_COLUMNS * (tile_w + gap)
+        y = head + i // SHEET_COLUMNS * (tile_h + label + gap)
+        oy, ox = (tile_h - image.shape[0]) // 2, (tile_w - image.shape[1]) // 2
+        sheet[y + oy:y + oy + image.shape[0], x + ox:x + ox + image.shape[1]] = image
+        places.append((x, y + tile_h))
+    # Text with Qt: OpenCV fonts have no umlauts.
+    canvas = QImage(sheet.data, width, sheet.shape[0], 3 * width, QImage.Format.Format_RGB888).copy()
+    p = QPainter(canvas)
+    p.setPen(QColor(235, 235, 235))
+    p.setFont(QFont('Noto Sans', 34))
+    p.drawText(QRectF(gap, 18, width - 2 * gap, 50), Qt.AlignmentFlag.AlignVCenter, roll.details['name'])
+    d = roll.details
+    p.setPen(QColor(160, 160, 160))
+    p.setFont(QFont('Noto Sans', 16))
+    line = ' · '.join(str(x) for x in (d.get('film_stock'), d.get('iso') and f'ISO {d["iso"]}', d.get('camera'), d.get('date')) if x)
+    p.drawText(QRectF(gap, 66, width - 2 * gap, 30), Qt.AlignmentFlag.AlignVCenter, line)
+    p.setFont(QFont('Noto Sans Mono', 15))
+    for i, (x, y) in enumerate(places):
+        p.drawText(QRectF(x, y + 2, tile_w, label), Qt.AlignmentFlag.AlignCenter, str(i + 1))
+    p.end()
+    ptr = canvas.constBits()
+    sheet = np.frombuffer(ptr, np.uint8).reshape(canvas.height(), canvas.bytesPerLine())[:, :3 * width].reshape(canvas.height(), width, 3)
+    folder = roll.export_folder
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f'{roll.details["name"]}_Kontaktbogen.jpg'
+    write_jpeg(path, sheet / 255, dng.xmp(roll.details, None))
+    return path
 
 
 def export_frame(roll, number):

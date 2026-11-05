@@ -614,6 +614,15 @@ class MainWindow(QMainWindow):
             self.picking = None
         self.refresh()
 
+    def contact_sheet(self):
+        """Ctrl+K: one JPEG of the whole roll in the export folder, written in the background."""
+        if not self.roll or not self.roll.frames:
+            return
+        roll = copy.deepcopy(self.roll)
+        self.say(tr('sheet_running'))
+        self.run(self.export_pool, lambda: export.contact_sheet(roll),
+                 lambda path, error: self.say(tr('sheet_failed', error=error) if error else tr('sheet_saved', path=path)))
+
     def save_preset(self):
         if not self.can_correct():
             return
@@ -739,6 +748,8 @@ class MainWindow(QMainWindow):
             self.history(back=False)
         elif ctrl and key == Qt.Key.Key_S:
             self.save_preset()
+        elif ctrl and key == Qt.Key.Key_K:
+            self.contact_sheet()
         elif ctrl and key == Qt.Key.Key_C:
             self.copy_correction()
         elif ctrl and key == Qt.Key.Key_V:

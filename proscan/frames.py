@@ -52,6 +52,16 @@ def params(roll, n, base, image=None):
     return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene)
 
 
+def preview(roll, n):
+    """The developed frame at screen size, cropped and turned: uint8 sRGB, as the window shows it."""
+    frame = roll.frames[n - 1]
+    image = view(roll, n)
+    frame.setdefault('crop', develop.default_crop(image.shape))
+    base = film_base(roll, n, image)[0]
+    return develop.develop(develop.apply_crop(image, frame['crop']), roll.details['film_type'],
+                           {**develop.AUTO, **frame.get('correction', {})}, base, roll.settings['look'], params(roll, n, base, image))
+
+
 def render(roll, n):
     """The developed frame at full resolution: dust-cleaned, cropped, turned and sharpened, sRGB 0..1."""
     frame = roll.frames[n - 1]

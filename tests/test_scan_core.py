@@ -8,6 +8,7 @@ from unittest import mock
 import cv2
 import numpy as np
 import tifffile
+from PySide6.QtGui import QGuiApplication
 
 from proscan import capture, develop, dng, export, infrared, multiexposure, pnm, scanner
 from proscan.roll import Roll
@@ -334,6 +335,18 @@ class CaptureAndRollTests(unittest.TestCase):
         with self.assertRaises(scanner.ScannerHung):
             capture.scan_raw('pieusb:0', self.root / 'f', infrared=True, multi_exposure=True, run=hung)
         self.assertFalse((self.root / 'f').exists())
+
+    def test_contact_sheet(self):
+        roll = Roll.create({'name': 'Kontakt Ä', 'film_type': 'colour_negative', 'film_stock': 'Gold 200'}, root=self.root)
+        for _ in range(7):
+            roll.add_frame(lambda d: self.scan(FakeScanner(film()), d, infrared=False, multi_exposure=False))
+            roll.frames[-1]['correction'] = {'D': 1}
+        QGuiApplication.instance() or QGuiApplication([])  # the frame numbers and title are drawn with Qt
+        path = export.contact_sheet(roll)
+        self.assertEqual(path.name, 'Kontakt Ä_Kontaktbogen.jpg')
+        sheet = cv2.imdecode(np.frombuffer(path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(sheet.shape[1], export.SHEET_COLUMNS * (export.SHEET_TILE + 24) + 24)
+        self.assertGreater(sheet.shape[0], 2 * export.SHEET_TILE)  # seven frames: two rows
 
     def test_roll_frames_rescan_and_dng_export(self):
         roll = Roll.create({'name': 'Hochzeit Lübeck', 'film_type': 'colour_negative', 'film_stock': 'Portra 400',
