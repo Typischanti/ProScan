@@ -110,6 +110,19 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
 
         # Presets: P, Down to Portrait, Enter; the keys stay. Then save as own preset and apply it later.
+        # W marks pure white and pure black and gives their share; W again turns it off.
+        self.key(Qt.Key.Key_W, 'w')
+        self.assertIn('Reinweiß', w.view.info[1])
+        self.assertEqual(w.view.info[1], f'Reinweiß {w.clipped[0]:.1f} % · Reinschwarz {w.clipped[1]:.1f} %'.replace('.', ','))
+        before = w.clipped
+        for _ in range(8):
+            self.key(Qt.Key.Key_Plus, '+')  # much darker: more pure black
+        self.assertGreater(w.clipped[1], before[1])
+        for _ in range(8):
+            self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.key(Qt.Key.Key_W, 'w')
+        self.assertNotIn('Reinweiß', w.view.info[1])
+
         # Hold Space: the plain automatic correction; let go: the frame's own again.
         mine = w.view.image
         self.key(Qt.Key.Key_Space, ' ')

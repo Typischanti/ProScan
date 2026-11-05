@@ -78,6 +78,7 @@ Other keys:
 | **B** | Choose which frame's film base to use |
 | **P** | Presets (see below) |
 | Hold **Space** | Before: the frame with only the automatic correction; let go to see yours |
+| **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |
 | **Ctrl+C**, **Ctrl+V** | Copy a frame's correction, paste it onto another frame |

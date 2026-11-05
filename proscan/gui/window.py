@@ -26,6 +26,17 @@ PAD = {'+': ('D', 1), '-': ('D', -1), '7': ('C', 1), '4': ('C', -1), '8': ('M', 
 BUSY = ('preview_run', 'raw')
 
 
+def clipping(image):
+    """8-bit sRGB `image` with pure white marked red and pure black blue; (image, white %, black %).
+
+    All three channels at the limit: a single channel there is common in deep colours and would mark far too much.
+    """
+    white, black = (image >= 254).all(axis=2), (image <= 1).all(axis=2)
+    marked = image.copy()
+    marked[white], marked[black] = (255, 0, 60), (0, 90, 255)
+    return marked, 100 * white.mean(), 100 * black.mean()
+
+
 class Bridge(QObject):
     """Delivers worker-thread results and scan progress to the GUI thread."""
     done = Signal(object, object, object)
@@ -84,6 +95,8 @@ class MainWindow(QMainWindow):
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
         self.picking = None      # index in the preset list while it is open (P)
         self.comparing = False   # Space held: the frame as the plain automatic correction shows it
+        self.warning = False     # W: mark what prints as pure white or pure black
+        self.clipped = (0., 0.)  # white and black share (%) of the selected frame while warning
         self.before = {}         # n -> (key, QImage) of that comparison view
         self.preset_thumbs = {}  # (frame, kind, id, correction) -> QImage for the preset list
         self.notice = ''         # short confirmation shown in the footer
@@ -439,19 +452,24 @@ class MainWindow(QMainWindow):
             self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
         return base, self.auto[n][1]
 
-    def _developed(self, cache, n, step):
+    def _developed(self, cache, n, step, warning=False):
         frame = self.frame(n)
         base, auto = self.development(n)
-        key = (repr(frame['correction']), repr(frame['crop']), repr(auto), self.roll.settings['look'])
+        key = (repr(frame['correction']), repr(frame['crop']), repr(auto), self.roll.settings['look'], warning)
         if cache.get(n, (None,))[0] != key:
             image = develop.develop(develop.apply_crop(self.raw(n)[::step, ::step], frame['crop']),
                                     self.roll.details['film_type'], frame['correction'], base, self.roll.settings['look'], auto)
-            cache[n] = (key, qimage(image))
+            shares = (0., 0.)
+            if warning:
+                image, *shares = clipping(image)
+            cache[n] = (key, qimage(image), shares)
+        if warning:
+            self.clipped = cache[n][2]
         return cache[n][1]
 
-    def image(self, n):
+    def image(self, n, warning=False):
         """Developed, cropped view of frame n, cached per correction and crop."""
-        return self._developed(self.images, n, 1)
+        return self._developed(self.images, n, 1, warning)
 
     def before_image(self, n):
         """Frame n with the plain automatic correction (Standard scene, no keys), for comparing."""
@@ -761,6 +779,9 @@ class MainWindow(QMainWindow):
             self.start_choosing()
         elif key == Qt.Key.Key_P:
             self.start_presets()
+        elif key == Qt.Key.Key_W:
+            self.warning = not self.warning
+            self.refresh()
         elif key == Qt.Key.Key_Space:
             if not event.isAutoRepeat() and self.can_correct():
                 self.comparing = True
@@ -878,9 +899,14 @@ class MainWindow(QMainWindow):
                 cw, ch = round(frame['crop']['w'] * w), round(frame['crop']['h'] * h)
                 px = f'{ch} × {cw} px' if frame['crop'].get('turn', 0) in (90, 270) else f'{cw} × {ch} px'
                 comparing = self.comparing and self.can_correct()
-                self.view.show(self.before_image(self.sel) if comparing else self.image(self.sel),
-                               info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}',
-                                     tr('comparing') if comparing else self.crop_text(frame['crop'])))
+                image = self.before_image(self.sel) if comparing else self.image(self.sel, self.warning)  # sets self.clipped
+                right = self.crop_text(frame['crop'])
+                if comparing:
+                    right = tr('comparing')
+                elif self.warning:
+                    share = [f'{v:.1f} %'.replace('.', ',' if i18n.language == 'de' else '.') for v in self.clipped]
+                    right = tr('clipped', white=share[0], black=share[1])
+                self.view.show(image, info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right))
             else:
                 self.view.show(None)
             self.stack.setCurrentWidget(self.view)
