@@ -235,13 +235,31 @@ class InfraredTests(unittest.TestCase):
         for y, x in spots:
             image[y:y + 2, x:x + 2] = 10000
             ir[y:y + 2, x:x + 2] = 8000
+        hair = np.s_[80, 60:90]  # longer than a speck: left whole, never cut into dashes
+        image[hair], ir[hair] = 10000, 8000
+        highlight = np.s_[10:13, 100:103]  # dense in red, infrared only slightly darker (dye crosstalk)
+        image[highlight], ir[highlight] = 3000, 33000
         mask, report = infrared.dust_mask(counts(image), ir.astype(np.uint16))
-        self.assertEqual(report['selected_pixels'], 16)
+        self.assertEqual(report['selected_pixels'], 4 * 16)  # each 2 x 2 speck plus one pixel all round
         for y, x in spots:
-            self.assertTrue(mask[y:y + 2, x:x + 2].all())
+            self.assertTrue(mask[y - 1:y + 3, x - 1:x + 3].all())
+        self.assertFalse(mask[78:83, 58:92].any())
+        self.assertFalse(mask[8:15, 98:105].any())
         repaired = infrared.repair(image.astype(np.float32), mask)
         np.testing.assert_array_equal(repaired[~mask], image.astype(np.float32)[~mask])
         self.assertTrue(np.all(np.abs(repaired[mask] - 30000) < 500))
+
+    def test_offset_next_to_the_best_does_not_make_it_ambiguous(self):
+        # Wide specks overlap the image one pixel off too; only distant offsets decide.
+        rng = np.random.default_rng(4)
+        image = np.full((200, 200, 3), 30000.) + rng.normal(0, 50, (200, 200, 3))
+        ir = np.full((200, 200), 40000.) + rng.normal(0, 60, (200, 200))
+        for y, x in rng.integers(10, 185, (12, 2)):
+            image[y:y + 4, x:x + 4] = 12000
+            ir[y:y + 4, x:x + 4] = 9000
+        mask, report = infrared.dust_mask(counts(image), counts(ir))
+        self.assertEqual(report['shift_yx'], [0, 0])
+        self.assertGreater(report['selected_pixels'], 12 * 16)
 
     def test_film_structure_is_rejected(self):
         ir = np.full((100, 100), 40000, np.uint16)

@@ -23,12 +23,24 @@ def _local_median(plane):
         yield y, end, block[y - top:end - top], median
 
 
-def _small_components(mask):
-    """4-connected components of at most 25 pixels within a 5 x 5 box."""
-    _, labels, stats, _ = cv2.connectedComponentsWithStats(
-        np.ascontiguousarray(mask, dtype=np.uint8), connectivity=4, ltype=cv2.CV_32S)
-    keep = ((stats[:, cv2.CC_STAT_AREA] <= 25) & (stats[:, cv2.CC_STAT_WIDTH] <= 5)
-            & (stats[:, cv2.CC_STAT_HEIGHT] <= 5))
+def _small_spots(candidates, visible, ir_drop, red_drop):
+    """Whole infrared spots of at most 60 pixels within a 10 x 10 box that also show in visible light.
+
+    Judged on the whole spot: a hair is either repaired completely or left alone, never cut into dashes.
+    Dust blocks infrared about as much as red; a dense highlight darkens infrared only by the cyan
+    dye's slight crosstalk (a few percent of its red drop), so spots weaker than a third are kept.
+    """
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        np.ascontiguousarray(candidates, dtype=np.uint8), connectivity=8, ltype=cv2.CV_32S)
+    keep = ((stats[:, cv2.CC_STAT_AREA] <= 60) & (stats[:, cv2.CC_STAT_WIDTH] <= 10)
+            & (stats[:, cv2.CC_STAT_HEIGHT] <= 10))
+    seen = np.zeros(count, bool)
+    seen[labels[visible]] = True
+    keep &= seen
+    flat = labels.ravel()
+    ir_mean = np.bincount(flat, ir_drop.ravel(), count)
+    red_mean = np.bincount(flat, red_drop.ravel(), count)
+    keep &= ir_mean >= red_mean / 3
     keep[0] = False
     return keep[labels]
 
@@ -45,12 +57,17 @@ def dust_mask(reference, infrared):
         raise InfraredRejected('Infrarotaufnahme zu dunkel oder zu stark gesättigt.')
     candidates = np.zeros((h, w), bool)
     visible = np.zeros((h, w), bool)
+    # How much darker than its surroundings, in stops, in infrared and in red.
+    ir_drop = np.zeros((h, w), np.float32)
+    red_drop = np.zeros((h, w), np.float32)
     for y, end, block, median in _local_median(infrared):
         delta = median - block
         noise = float(np.median(np.abs(delta)))
         candidates[y:end] = (delta > np.maximum(.08 * median, max(.025, 6 * noise))) & (median > .06)
+        ir_drop[y:end] = np.log2(np.maximum(median, 1e-4) / np.maximum(block, 1e-4))
     for y, end, block, median in _local_median(reference[..., 0]):
         visible[y:end] = abs(median - block) > .025
+        red_drop[y:end] = np.log2(np.maximum(median, 1e-4) / np.maximum(block, 1e-4))
     candidates[:4] = candidates[-4:] = False
     candidates[:, :4] = candidates[:, -4:] = False
     count = int(candidates.sum())
@@ -68,10 +85,15 @@ def dust_mask(reference, infrared):
             scores.append((np.count_nonzero(moved & visible) / count, dy, dx))
     scores.sort(reverse=True)
     score, dy, dx = scores[0]
+    # Spots are several pixels wide, so offsets next to the best one always score nearly as well;
+    # the match is clear when it beats every offset two or more pixels away.
+    distant = max(s for s, y, x in scores if abs(y - dy) > 1 or abs(x - dx) > 1)
     # Never guess an ambiguous offset or one at the search boundary.
-    if score < .5 or abs(dy) == 2 or abs(dx) == 2 or score - scores[1][0] < .05:
+    if score < .25 or abs(dy) == 2 or abs(dx) == 2 or score - distant < .1:
         raise InfraredRejected('Infrarot-Staubstellen lassen sich dem Bild nicht eindeutig zuordnen.')
-    mask = _small_components(np.roll(candidates, (dy, dx), (0, 1)) & visible)
+    mask = _small_spots(np.roll(candidates, (dy, dx), (0, 1)), visible, np.roll(ir_drop, (dy, dx), (0, 1)), red_drop)
+    # One pixel more all round: a speck's soft edge is below the thresholds and stayed as a faint ring.
+    mask = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
     return mask, {'candidates': count, 'shift_yx': [dy, dx], 'alignment_match': score,
                   'selected_pixels': int(mask.sum())}
 
