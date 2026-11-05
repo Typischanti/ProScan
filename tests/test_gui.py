@@ -114,6 +114,7 @@ class GuiFlowTests(unittest.TestCase):
         items = w.preset_list()
         self.assertEqual([i[:2] for i in items[:2]], [('scene', 'standard'), ('scene', 'portrait')])
         self.assertTrue(all(not i[4].isNull() for i in items))  # every preset has its thumbnail
+        self.assertEqual(w.panel.state['presets']['selected'], 0)  # the panel shows the list
         self.key(Qt.Key.Key_Down)
         self.key(Qt.Key.Key_Return)
         self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2, 'scene': 'portrait'})

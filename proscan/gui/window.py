@@ -866,7 +866,8 @@ class MainWindow(QMainWindow):
         return text + (f' · {tr("turned")} {crop["turn"]}°' if crop.get('turn') else '')
 
     def render_panel(self):
-        locked = not self.can_correct()
+        # While the preset list is open the frame cannot take keys, but the panel shows the list, not a lock.
+        locked = not self.can_correct() and self.picking is None
         if not self.sel or locked:
             values, corrected, crop = dict(develop.AUTO), False, '—'
         else:
