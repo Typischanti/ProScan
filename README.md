@@ -85,7 +85,8 @@ Other keys:
 | **Ctrl+Shift+V** | Paste it onto every frame of the roll |
 | **Ctrl+Z**, **Ctrl+Shift+Z** | Undo / redo, per frame |
 | **Ctrl+E** | Export the frame again |
-| **Ctrl+K** | Contact sheet: one JPEG of the whole roll in the export folder (`<roll>_Kontaktbogen.jpg`) |
+| **Ctrl+K** | Contact sheet on paper: the whole roll on one JPEG in the export folder (`<roll>_Kontaktbogen.jpg`) |
+| **Ctrl+Shift+K** | Contact sheet as black film strips with sprocket holes (`<roll>_Kontaktbogen_Film.jpg`) |
 | **Ctrl+,** | Roll settings |
 | **Ctrl+N**, **Ctrl+O** | New roll, open roll |
 | **F1** | All keys |

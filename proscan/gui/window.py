@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import capture, develop, export, frames, presets, scanner
+from .. import capture, develop, export, frames, presets, scanner, sheet
 from .. import roll as rolls
 from . import i18n
 from . import theme as t
@@ -614,13 +614,14 @@ class MainWindow(QMainWindow):
             self.picking = None
         self.refresh()
 
-    def contact_sheet(self):
-        """Ctrl+K: one JPEG of the whole roll in the export folder, written in the background."""
+    def contact_sheet(self, style):
+        """Ctrl+K (paper) / Ctrl+Shift+K (film strips): the roll on one JPEG in the export folder, made in the background."""
         if not self.roll or not self.roll.frames:
             return
         roll = copy.deepcopy(self.roll)
+        words = {**tr('sheet_words'), **{t_: tr(t_) for t_ in rolls.FILM_TYPES}}
         self.say(tr('sheet_running'))
-        self.run(self.export_pool, lambda: export.contact_sheet(roll),
+        self.run(self.export_pool, lambda: sheet.contact_sheet(roll, style, words),
                  lambda path, error: self.say(tr('sheet_failed', error=error) if error else tr('sheet_saved', path=path)))
 
     def save_preset(self):
@@ -749,7 +750,7 @@ class MainWindow(QMainWindow):
         elif ctrl and key == Qt.Key.Key_S:
             self.save_preset()
         elif ctrl and key == Qt.Key.Key_K:
-            self.contact_sheet()
+            self.contact_sheet('film' if mods & Qt.KeyboardModifier.ShiftModifier else 'paper')
         elif ctrl and key == Qt.Key.Key_C:
             self.copy_correction()
         elif ctrl and key == Qt.Key.Key_V:

@@ -10,7 +10,7 @@ import numpy as np
 import tifffile
 from PySide6.QtGui import QGuiApplication
 
-from proscan import capture, develop, dng, export, infrared, multiexposure, pnm, scanner
+from proscan import capture, develop, dng, export, infrared, multiexposure, pnm, scanner, sheet
 from proscan.roll import Roll
 
 SETTINGS = {'exposure': [3000] * 4, 'gain': [19] * 4, 'offset': [0] * 4, 'light': 4, 'double': 0}
@@ -341,12 +341,15 @@ class CaptureAndRollTests(unittest.TestCase):
         for _ in range(7):
             roll.add_frame(lambda d: self.scan(FakeScanner(film()), d, infrared=False, multi_exposure=False))
             roll.frames[-1]['correction'] = {'D': 1}
-        QGuiApplication.instance() or QGuiApplication([])  # the frame numbers and title are drawn with Qt
-        path = export.contact_sheet(roll)
-        self.assertEqual(path.name, 'Kontakt Ä_Kontaktbogen.jpg')
-        sheet = cv2.imdecode(np.frombuffer(path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
-        self.assertEqual(sheet.shape[1], export.SHEET_COLUMNS * (export.SHEET_TILE + 24) + 24)
-        self.assertGreater(sheet.shape[0], 2 * export.SHEET_TILE)  # seven frames: two rows
+        QGuiApplication.instance() or QGuiApplication([])  # the sheets are drawn with Qt
+        paper = sheet.contact_sheet(roll)
+        self.assertEqual(paper.name, 'Kontakt Ä_Kontaktbogen.jpg')
+        image = cv2.imdecode(np.frombuffer(paper.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(image.shape[:2], (2696, 2840))  # two rows of frames, like Claude Design's 12-frame board
+        strips = sheet.contact_sheet(roll, 'film', {'frames': '{n} frames'})
+        self.assertEqual(strips.name, 'Kontakt Ä_Kontaktbogen_Film.jpg')
+        image = cv2.imdecode(np.frombuffer(strips.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(image.shape[:2], (340 + 2 * 544 - 40 + 56 + 28 + 120, 3288))  # two strips
 
     def test_roll_frames_rescan_and_dng_export(self):
         roll = Roll.create({'name': 'Hochzeit Lübeck', 'film_type': 'colour_negative', 'film_stock': 'Portra 400',
