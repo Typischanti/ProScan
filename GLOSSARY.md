@@ -88,6 +88,14 @@ _Avoid_: Colour sliders, RGB balance, white balance
 The part of a frame's tones the colour keys act on: the whole frame, or mainly its highlights, midtones or shadows.
 _Avoid_: Zone, colour wheels, split toning
 
+**Saturation** (Sättigung, F):
+How strong a developed frame's colours are, changed as on film: more colour means more dye, so colours also get deeper and darker; greys stay. One of the correction keys.
+_Avoid_: Chroma, colourfulness
+
+**Vibrance** (Dynamik, V):
+Saturation that changes muted colours most and strong ones least. One of the correction keys.
+_Avoid_: Vividness, smart saturation
+
 **Scene** (Szene):
 The kind of picture a frame shows (portrait, landscape, night …), which shapes its auto correction; one per frame, Standard by default.
 _Avoid_: Mode, filter

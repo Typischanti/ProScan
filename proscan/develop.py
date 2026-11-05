@@ -15,11 +15,13 @@ import numpy as np
 # Tone ranges for the colour keys: highlights, midtones, shadows; 'Ch' is cyan in the highlights.
 TONES = ('h', 'm', 's')
 TONE_KEYS = tuple(c + z for z in TONES for c in 'CMY')
-KEYS = ('D', 'H', 'C', 'M', 'Y', 'G', 'S') + TONE_KEYS
-LIMITS = {'D': (-12, 12), 'H': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'G': (-3, 3), 'S': (0, 5),
-          **{k: (-12, 12) for k in TONE_KEYS}}
+KEYS = ('D', 'H', 'C', 'M', 'Y', 'F', 'V', 'G', 'S') + TONE_KEYS
+LIMITS = {'D': (-12, 12), 'H': (-12, 12), 'C': (-12, 12), 'M': (-12, 12), 'Y': (-12, 12), 'F': (-6, 6), 'V': (-6, 6),
+          'G': (-3, 3), 'S': (0, 5), **{k: (-12, 12) for k in TONE_KEYS}}
 # 'scene' is part of the correction, so copying, undo and the exports carry it with the keys.
-AUTO = {'scene': 'standard', 'D': 0, 'H': 0, 'C': 0, 'M': 0, 'Y': 0, 'G': 0, 'S': 2, **{k: 0 for k in TONE_KEYS}}
+AUTO = {'scene': 'standard', 'D': 0, 'H': 0, 'C': 0, 'M': 0, 'Y': 0, 'F': 0, 'V': 0, 'G': 0, 'S': 2, **{k: 0 for k in TONE_KEYS}}
+SATURATION_STEP = .08  # colour per saturation (F) or vibrance (V) step: +6 = about +50 %, −6 = about half
+VIBRANT = 6.            # stops of dye difference at which vibrance no longer adds colour (typical colours: 2–3)
 H_STEP = 1 / 12  # midtone brightness: the print gamma changes by 2^(-H/12), black and white stay put
 D_STEP = 1 / 6        # stops per density key step: ±12 steps = ±2 stops
 COLOUR_STEP = 1 / 12  # stops per colour key step on its opposite channel
@@ -197,7 +199,25 @@ def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
     if film_type != 'bw_negative' and style['saturation'] != 1:
         luma = (y @ LUMA)[..., None]
         y = luma + (y - luma) * style['saturation']
+    if film_type != 'bw_negative' and (c['F'] or c['V']):
+        y = subtractive_saturation(np.clip(y, 0, 1), c['F'], c['V'])
     return np.clip(y, 0, 1).astype(np.float32)
+
+
+def subtractive_saturation(y, saturation, vibrance):
+    """Saturation and vibrance as on film: more colour means more dye, so colours get deeper and darker.
+
+    Works on the print's density per channel. The least dense channel is the colour's neutral part and
+    stays; the dye beyond it is scaled. Vibrance scales muted colours fully and strong ones less.
+    """
+    density = np.minimum(-np.log2(np.maximum(srgb_decode(y), 2 ** -12)), 12)
+    neutral = density.min(axis=-1, keepdims=True)
+    dye = density - neutral
+    scale = 1 + SATURATION_STEP * saturation
+    if vibrance:
+        muted = 1 - np.clip(dye.max(axis=-1, keepdims=True) / VIBRANT, 0, 1)
+        scale = scale * (1 + SATURATION_STEP * vibrance * muted)
+    return _srgb_encode(2 ** -(neutral + np.maximum(scale, 0) * dye))
 
 
 def sharpen(image, amount, sigma):

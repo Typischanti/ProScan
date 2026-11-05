@@ -538,7 +538,7 @@ class MainWindow(QMainWindow):
             self.change(self.sel, crop={**crop, 'turn': (crop.get('turn', 0) + degrees) % 360})
 
     def key_step(self, key, delta):
-        if not self.can_correct() or (key in 'CMY' and self.roll.details['film_type'] == 'bw_negative'):
+        if not self.can_correct() or (key in 'CMYFV' and self.roll.details['film_type'] == 'bw_negative'):
             return
         correction = dict(self.frame(self.sel)['correction'])
         if key in 'CMY' and self.tone:
@@ -798,8 +798,9 @@ class MainWindow(QMainWindow):
             if not event.isAutoRepeat() and self.can_correct():
                 self.comparing = True
                 self.refresh()
-        elif key == Qt.Key.Key_H:
-            self.key_step('H', -1 if mods & Qt.KeyboardModifier.ShiftModifier else 1)
+        elif key in (Qt.Key.Key_H, Qt.Key.Key_F, Qt.Key.Key_V):
+            self.key_step({Qt.Key.Key_H: 'H', Qt.Key.Key_F: 'F', Qt.Key.Key_V: 'V'}[key],
+                          -1 if mods & Qt.KeyboardModifier.ShiftModifier else 1)
         elif text.lower() == 'r':
             self.rescan()
         elif text == '0':

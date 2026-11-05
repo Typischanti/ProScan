@@ -139,6 +139,26 @@ class NegativeTests(unittest.TestCase):
         indoor = scene('indoor')
         self.assertLess(indoor[..., 0].mean() - indoor[..., 2].mean(), standard[..., 0].mean() - standard[..., 2].mean())
 
+    def test_subtractive_saturation(self):
+        y = develop.srgb_decode  # only for readability below
+        patches = np.array([[[.8, .25, .2], [.5, .5, .5], [.55, .5, .45]]], np.float32)  # red, grey, a muted warm tone
+        more, less = develop.subtractive_saturation(patches, 6, 0), develop.subtractive_saturation(patches, -6, 0)
+        chroma = lambda c: float(c.max() - c.min())
+        luma = lambda c: float(y(c) @ develop.LUMA)
+        red, grey = patches[0, 0], patches[0, 1]
+        self.assertGreater(chroma(more[0, 0]), chroma(red))
+        self.assertLess(luma(more[0, 0]), luma(red))       # more dye: deeper and darker, unlike additive saturation
+        self.assertGreater(luma(less[0, 0]), luma(red))
+        self.assertAlmostEqual(more[0, 0, 0], red[0], 3)   # the least dense channel (the colour's neutral part) stays
+        np.testing.assert_allclose(more[0, 1], grey, atol=1e-5)
+        vivid = develop.subtractive_saturation(patches, 0, 6)
+        gain = lambda before, after: chroma(after) / chroma(before)
+        self.assertGreater(gain(patches[0, 2], vivid[0, 2]), gain(red, vivid[0, 0]))  # muted colours gain most
+
+    def test_saturation_keys_leave_black_and_white_alone(self):
+        np.testing.assert_allclose(developed(self.raw, 'bw_negative', correction={'F': 6, 'V': 6}),
+                                   developed(self.raw, 'bw_negative'), atol=1e-6)
+
     def test_faithful_is_gentler_than_frontier(self):
         frontier, faithful = developed(self.raw), developed(self.raw, look='faithful')
         saturation = lambda y: float(np.mean(y.max(axis=2) - y.min(axis=2)))

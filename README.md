@@ -56,6 +56,8 @@ Every frame starts with an automatic correction. The number pad changes it
 |---|---|
 | Num **+** / **−** | Density: darker / lighter |
 | **H** / **Shift+H** | Brightness: midtones lighter / darker (black and white stay) |
+| **F** / **Shift+F** | Saturation more / less, subtractive like film: stronger colours get deeper and darker |
+| **V** / **Shift+V** | Vibrance: like saturation, but muted colours change most and strong ones (skin, orange) least |
 | Num **7** / **4** | More / less cyan |
 | Num **8** / **5** | More / less magenta |
 | Num **9** / **6** | More / less yellow |

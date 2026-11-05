@@ -129,6 +129,14 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
 
         # Presets: P, Down to Portrait, Enter; the keys stay. Then save as own preset and apply it later.
+        # F / Shift+F and V: saturation and vibrance keys.
+        self.key(Qt.Key.Key_F, 'f')
+        self.key(Qt.Key.Key_F, 'f')
+        self.key(Qt.Key.Key_V, 'V', Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual((w.frame(1)['correction']['F'], w.frame(1)['correction']['V']), (2, -1))
+        for _ in range(3):
+            self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+
         # W marks pure white and pure black and gives their share; W again turns it off.
         self.key(Qt.Key.Key_W, 'w')
         self.assertIn('Reinweiß', w.view.info[1])

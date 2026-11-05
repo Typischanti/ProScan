@@ -410,6 +410,7 @@ class CorrectionPanel(QWidget):
             return self._paint_presets(p, w, s['presets'])
         rows = [('D', tr('density'), 'Num + / −', False), ('H', tr('brightness'), 'H / Shift+H', False), ('C', tr('cyan'), 'Num 7 / 4', s['bw']),
                 ('M', tr('magenta'), 'Num 8 / 5', s['bw']), ('Y', tr('yellow'), 'Num 9 / 6', s['bw']),
+                ('F', tr('saturation'), 'F / Shift+F', s['bw']), ('V', tr('vibrance'), 'V / Shift+V', s['bw']),
                 ('G', tr('gradation'), 'Num 3 / 1', False), ('S', tr('sharpness'), 'Num × / ÷', False)]
         y = 72
         tone = s.get('tone')
@@ -492,7 +493,8 @@ class CorrectionPanel(QWidget):
         p.setFont(font(12))
         p.setPen(QColor('#a3a3a3'))
         p.drawText(36, y + 24, text)
-        if s.get('pad', True):
+        # The pad only recalls the keys (F1 shows them too): left out when it would cover the panel.
+        if s.get('pad', True) and y + 40 <= self.height() - 14 - 5 * 33 - 28 - 12:
             self._paint_pad(p, w, s['bw'])
 
     def _paint_presets(self, p, w, picking):
