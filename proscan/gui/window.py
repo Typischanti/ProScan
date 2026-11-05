@@ -83,6 +83,8 @@ class MainWindow(QMainWindow):
         self.copied = None       # (frame number, correction) from Ctrl+C
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
         self.picking = None      # index in the preset list while it is open (P)
+        self.comparing = False   # Space held: the frame as the plain automatic correction shows it
+        self.before = {}         # n -> (key, QImage) of that comparison view
         self.preset_thumbs = {}  # (frame, kind, id, correction) -> QImage for the preset list
         self.notice = ''         # short confirmation shown in the footer
         self.notice_timer = QTimer(self)
@@ -451,6 +453,17 @@ class MainWindow(QMainWindow):
         """Developed, cropped view of frame n, cached per correction and crop."""
         return self._developed(self.images, n, 1)
 
+    def before_image(self, n):
+        """Frame n with the plain automatic correction (Standard scene, no keys), for comparing."""
+        frame = self.frame(n)
+        base = self.development(n)[0]
+        key = (repr(frame['crop']), repr(base), self.roll.settings['look'])
+        if self.before.get(n, (None,))[0] != key:
+            image = develop.develop(develop.apply_crop(self.raw(n), frame['crop']), self.roll.details['film_type'],
+                                    develop.AUTO, base, self.roll.settings['look'])
+            self.before[n] = (key, qimage(image))
+        return self.before[n][1]
+
     def thumb(self, n):
         return self._developed(self.thumbs, n, 6)
 
@@ -748,6 +761,10 @@ class MainWindow(QMainWindow):
             self.start_choosing()
         elif key == Qt.Key.Key_P:
             self.start_presets()
+        elif key == Qt.Key.Key_Space:
+            if not event.isAutoRepeat() and self.can_correct():
+                self.comparing = True
+                self.refresh()
         elif key == Qt.Key.Key_H:
             self.key_step('H', -1 if mods & Qt.KeyboardModifier.ShiftModifier else 1)
         elif text.lower() == 'r':
@@ -760,6 +777,13 @@ class MainWindow(QMainWindow):
             self.key_step(*PAD[text])
         else:
             super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat() and self.comparing:
+            self.comparing = False
+            self.refresh()
+        else:
+            super().keyReleaseEvent(event)
 
     def toggle_grid(self):
         if self.roll and self.roll.frames and not self.cropping:
@@ -853,8 +877,10 @@ class MainWindow(QMainWindow):
                 h, w = frame['size']
                 cw, ch = round(frame['crop']['w'] * w), round(frame['crop']['h'] * h)
                 px = f'{ch} × {cw} px' if frame['crop'].get('turn', 0) in (90, 270) else f'{cw} × {ch} px'
-                self.view.show(self.image(self.sel), info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}',
-                                                           self.crop_text(frame['crop'])))
+                comparing = self.comparing and self.can_correct()
+                self.view.show(self.before_image(self.sel) if comparing else self.image(self.sel),
+                               info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}',
+                                     tr('comparing') if comparing else self.crop_text(frame['crop'])))
             else:
                 self.view.show(None)
             self.stack.setCurrentWidget(self.view)

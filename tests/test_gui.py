@@ -110,6 +110,15 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
 
         # Presets: P, Down to Portrait, Enter; the keys stay. Then save as own preset and apply it later.
+        # Hold Space: the plain automatic correction; let go: the frame's own again.
+        mine = w.view.image
+        self.key(Qt.Key.Key_Space, ' ')
+        self.assertTrue(w.comparing)
+        self.assertNotEqual(w.view.image, mine)
+        QApplication.sendEvent(w, QKeyEvent(QEvent.Type.KeyRelease, Qt.Key.Key_Space, Qt.KeyboardModifier.NoModifier, ' '))
+        self.assertFalse(w.comparing)
+        self.assertEqual(w.view.image, mine)
+
         self.key(Qt.Key.Key_P, 'p')
         items = w.preset_list()
         self.assertEqual([i[:2] for i in items[:2]], [('scene', 'standard'), ('scene', 'portrait')])
