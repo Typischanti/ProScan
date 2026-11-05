@@ -165,16 +165,13 @@ each file's metadata.
   black-and-white film, because the silver blocks infrared.
 - **If the scanner stops responding**, the frame stays loaded: switch the scanner
   off and on, then retry with Enter.
-- **Wide-gamut monitors:** Pro Scan reads the monitor's colour primaries from its
-  EDID and converts what it shows on screen, so colours look as they will in the
-  sRGB exports. The exports themselves are not changed. With several monitors,
-  the first connected one is used.
 - **Raw scans are large:** about 260 MB per frame at 3600 dpi, so a 36-exposure roll needs around 10 GB.
 
 ## Not done yet
 
-Film stock profiles, dragging the crop with the mouse, and resetting a hung
-scanner over USB.
+Film stock profiles, the monitor's colour profile on screen (sRGB is assumed,
+so on a wide-gamut monitor colours look more saturated, as in most image
+viewers), and resetting a hung scanner over USB.
 
 ## For developers
 
