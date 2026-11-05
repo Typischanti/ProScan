@@ -93,6 +93,7 @@ Keys while cropping (after **A**):
 
 | Key | Does |
 |---|---|
+| Mouse | Drag inside the crop to move it, a corner to resize it (an edge too when free) |
 | Arrows | Move the crop |
 | Shift+arrows | Make it larger or smaller |
 | **F** | Switch between fixed 3:2 and free proportions |

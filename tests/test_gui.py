@@ -12,18 +12,38 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
 import tifffile
-from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog
 
 from proscan import capture, develop, frames, presets, scanner
 from proscan import roll as rolls
 from proscan.gui import i18n
 from proscan.gui.rollform import RollForm
+from proscan.gui.widgets import drag_crop
 from proscan.gui.window import MainWindow
 from tests.test_scan_core import FakeScanner, film
 
 app = QApplication.instance() or QApplication([])
+
+
+class CropDragTests(unittest.TestCase):
+    START = {'x': .1, 'y': .1, 'w': .6, 'h': .6, 'free': False, 'angle': 0.}  # 3:2 on a 3:2 image is square in 0..1
+
+    def test_move_stays_inside(self):
+        self.assertEqual(drag_crop(self.START, 'move', .5, -.5, 1.5), {'x': .4, 'y': 0.})
+
+    def test_corner_keeps_three_to_two(self):
+        c = drag_crop(self.START, 'br', .2, .05, 1.5)
+        self.assertAlmostEqual(c['w'] * 1.5 / c['h'], 1.5)
+        self.assertEqual((c['x'], c['y']), (.1, .1))  # anchored at the opposite corner
+        c = drag_crop(self.START, 'tl', -.05, -.05, 1.5)
+        self.assertAlmostEqual((c['x'] + c['w'], c['y'] + c['h']), (.7, .7))
+
+    def test_free_edge_moves_one_side(self):
+        c = drag_crop({**self.START, 'free': True}, 'r', .2, .3, 1.5)
+        self.assertEqual((c['x'], c['y'], c['h']), (.1, .1, .6))
+        self.assertAlmostEqual(c['w'], .8)
 
 
 class GuiFlowTests(unittest.TestCase):
@@ -161,6 +181,20 @@ class GuiFlowTests(unittest.TestCase):
         self.assertLess(crop['w'], before['w'])
         h, wd = np.load(w.roll.frame_dir(1) / 'rohscan.npy', mmap_mode='r').shape[:2]
         self.assertAlmostEqual(crop['w'] * wd / (crop['h'] * h), 1.5)
+
+        # The mouse: drag the middle of the crop to move it, Enter keeps it.
+        self.key(Qt.Key.Key_A, 'a')
+        w.view.grab()  # draws the hidden test window, so the view knows where the image is
+        t_, c = w.view.target, w.cropping
+        middle = QPointF(t_.left() + (c['x'] + c['w'] / 2) * t_.width(), t_.top() + (c['y'] + c['h'] / 2) * t_.height())
+        mouse = lambda kind, pos, button: w.view.event(QMouseEvent(kind, pos, pos, button, button, Qt.KeyboardModifier.NoModifier))
+        mouse(QEvent.Type.MouseButtonPress, middle, Qt.MouseButton.LeftButton)
+        mouse(QEvent.Type.MouseMove, middle - QPointF(t_.width() * .02, 0), Qt.MouseButton.LeftButton)
+        mouse(QEvent.Type.MouseButtonRelease, middle - QPointF(t_.width() * .02, 0), Qt.MouseButton.LeftButton)
+        self.key(Qt.Key.Key_Return)
+        self.assertAlmostEqual(w.frame(1)['crop']['x'], max(0, crop['x'] - .02), places=3)
+        self.assertAlmostEqual(w.frame(1)['crop']['w'], crop['w'])
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
 
         self.key(Qt.Key.Key_T, 't')
         self.assertEqual(w.frame(1)['crop']['turn'], 90)

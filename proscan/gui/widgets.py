@@ -143,7 +143,10 @@ class ImageView(QWidget):
         self.preview_yes = ''
         self.preview_no = ''
         self.info = ('', '')
+        self.target = QRectF()  # where the image was drawn, for the mouse in crop mode
+        self.drag = None        # (what, crop at press, press position) while dragging the crop
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMouseTracking(True)
 
     def show(self, image, mode='normal', crop=None, info=('', ''), preview=('', '', '')):
         self.image, self.mode, self.crop, self.info = image, mode, crop, info
@@ -157,7 +160,7 @@ class ImageView(QWidget):
         area = QRectF(self.rect()).adjusted(40, 30, -40, -50)
         if self.image is None:
             return
-        target = fitted(self.image.size(), area)
+        target = self.target = fitted(self.image.size(), area)
         p.drawImage(target, self.image)
         p.setFont(font(12, mono=True))
         p.setPen(QColor('#7a7a7a'))
@@ -211,6 +214,47 @@ class ImageView(QWidget):
         p.setPen(QColor(t.TEXT))
         p.drawText(no, Qt.AlignmentFlag.AlignCenter, f'Esc    {self.preview_no}')
 
+    # --- the crop with the mouse: drag inside to move, a corner to resize (an edge too when free) -----
+
+    def _grab(self, pos):
+        """What the mouse is over: 'move', a corner/edge such as 'tl' or 'r', or None outside the crop."""
+        c, t_ = self.crop, self.target
+        left, top = t_.left() + c['x'] * t_.width(), t_.top() + c['y'] * t_.height()
+        right, bottom = left + c['w'] * t_.width(), top + c['h'] * t_.height()
+        near = lambda a, b: abs(a - b) <= 10
+        v = 't' if near(pos.y(), top) else 'b' if near(pos.y(), bottom) else ''
+        h = 'l' if near(pos.x(), left) else 'r' if near(pos.x(), right) else ''
+        inside_x, inside_y = left - 10 <= pos.x() <= right + 10, top - 10 <= pos.y() <= bottom + 10
+        if v and h:
+            return v + h
+        if (v and inside_x or h and inside_y) and c['free']:
+            return v + h
+        return 'move' if left < pos.x() < right and top < pos.y() < bottom else None
+
+    def mousePressEvent(self, event):
+        if self.mode == 'crop' and self.crop and event.button() == Qt.MouseButton.LeftButton:
+            what = self._grab(event.position())
+            self.drag = (what, dict(self.crop), event.position()) if what else None
+
+    def mouseReleaseEvent(self, event):
+        self.drag = None
+
+    def mouseMoveEvent(self, event):
+        if self.mode != 'crop' or not self.crop or self.target.isEmpty():
+            return self.unsetCursor()
+        pos = event.position()
+        if not self.drag:
+            cursors = {'move': Qt.CursorShape.SizeAllCursor, 'tl': Qt.CursorShape.SizeFDiagCursor,
+                       'br': Qt.CursorShape.SizeFDiagCursor, 'tr': Qt.CursorShape.SizeBDiagCursor,
+                       'bl': Qt.CursorShape.SizeBDiagCursor, 't': Qt.CursorShape.SizeVerCursor,
+                       'b': Qt.CursorShape.SizeVerCursor, 'l': Qt.CursorShape.SizeHorCursor, 'r': Qt.CursorShape.SizeHorCursor}
+            what = self._grab(pos)
+            return self.setCursor(cursors[what]) if what else self.unsetCursor()
+        what, start, press = self.drag
+        self.crop.update(drag_crop(start, what, (pos.x() - press.x()) / self.target.width(),
+                                   (pos.y() - press.y()) / self.target.height(), self.target.width() / self.target.height()))
+        self.update()
+
     def _paint_crop(self, p, target):
         c = self.crop
         rect = QRectF(target.left() + c['x'] * target.width(), target.top() + c['y'] * target.height(),
@@ -238,6 +282,36 @@ class ImageView(QWidget):
         p.fillRect(QRectF(rect.left() + 12, rect.top() + 12, 130, 22), QColor('#121212'))
         p.setPen(QColor(t.TEXT))
         p.drawText(QRectF(rect.left() + 20, rect.top() + 12, 130, 22), Qt.AlignmentFlag.AlignVCenter, tag)
+
+
+def drag_crop(start, what, dx, dy, aspect):
+    """The crop `start` after dragging `what` ('move', a corner like 'tl', or an edge) by dx, dy (0..1 of the image).
+
+    `aspect` is the image's width / height; a crop that is not free keeps 3:2 (or 2:3) in image pixels.
+    """
+    x, y, w, h = start['x'], start['y'], start['w'], start['h']
+    if what == 'move':
+        return {'x': max(0., min(1 - w, x + dx)), 'y': max(0., min(1 - h, y + dy))}
+    left, top, right, bottom = x, y, x + w, y + h
+    if 'l' in what:
+        left = max(0., min(right - .05, left + dx))
+    if 'r' in what:
+        right = min(1., max(left + .05, right + dx))
+    if 't' in what:
+        top = max(0., min(bottom - .05, top + dy))
+    if 'b' in what:
+        bottom = min(1., max(top + .05, bottom + dy))
+    w, h = right - left, bottom - top
+    if not start['free']:
+        # Keep the shape: the side that changed less follows the other, anchored at the opposite corner.
+        ratio = 1.5 if start['w'] * aspect >= start['h'] else 1 / 1.5
+        if w * aspect / h > ratio:
+            w = h * ratio / aspect
+        else:
+            h = w * aspect / ratio
+        left = right - w if 'l' in what else left
+        top = bottom - h if 't' in what else top
+    return {'x': left, 'y': top, 'w': w, 'h': h}
 
 
 class Card(QWidget):
