@@ -1,25 +1,30 @@
 """What developing a frame needs, shared by the screen and the exports so both show the same image."""
 import numpy as np
 
-from . import capture, develop
+from . import capture, develop, flat
 from .files import save_npy
 
 SHARPEN_SIGMA = 1.  # pixels at the raw scan's 3600 dpi
 
 
 def view(roll, n):
-    """The frame's raw scan at screen size, kept as ansicht.npy so it is read from the full scan only once."""
+    """The frame's raw scan at screen size, with the scanner's light evened out (see flat.py).
+
+    Kept as ansicht.npy as scanned, so it is read from the full scan only once.
+    """
     path = roll.frame_dir(n) / 'ansicht.npy'
     if not path.exists():
         save_npy(path, develop.reduce(np.load(roll.frame_dir(n) / 'rohscan.npy', mmap_mode='r'), 1600))
-    return np.load(path)
+    return flat.apply(np.load(path))
 
 
 def measured_base(roll, n, image=None):
     """The film base measured on frame n itself, or None; measured once and kept in the roll."""
     frame = roll.frames[n - 1]
-    if 'film_base' not in frame:
-        frame['film_base'] = {'measured': develop.measure_film_base(view(roll, n) if image is None else image), 'from': None}
+    # Measured again after a new calibration, since it changes the edges where the film base is measured.
+    if 'film_base' not in frame or frame['film_base'].get('flat', '') != flat.stamp():
+        frame['film_base'] = {'measured': develop.measure_film_base(view(roll, n) if image is None else image),
+                              'from': frame.get('film_base', {}).get('from'), 'flat': flat.stamp()}
     return frame['film_base']['measured']
 
 
@@ -47,8 +52,8 @@ def film_base(roll, n, image=None):
 def levels(roll, n, image=None):
     """Frame n's scanner levels per channel (see develop.levels); measured once and kept in the roll."""
     frame = roll.frames[n - 1]
-    if 'levels' not in frame:
-        frame['levels'] = develop.levels(view(roll, n) if image is None else image)
+    if frame.get('levels', {}).get('flat', '') != flat.stamp() or 'low' not in frame.get('levels', {}):
+        frame['levels'] = {**develop.levels(view(roll, n) if image is None else image), 'flat': flat.stamp()}
     return frame['levels']
 
 

@@ -16,7 +16,7 @@ from PySide6.QtCore import QEvent, QPointF, Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog
 
-from proscan import capture, develop, frames, presets, scanner
+from proscan import capture, develop, flat, frames, presets, scanner
 from proscan import roll as rolls
 from proscan.gui import i18n
 from proscan.gui.rollform import RollForm
@@ -55,6 +55,7 @@ class GuiFlowTests(unittest.TestCase):
         self.fake = FakeScanner(film(), dust=[(20, 30), (60, 90), (100, 40), (40, 130)])
         for patch in (mock.patch.object(rolls, 'ROOT', root / 'rolls'), mock.patch.object(i18n, 'SETTINGS', root / 's.json'),
                       mock.patch.object(presets, 'OWN', root / 'presets.json'),
+                      mock.patch.object(flat, 'PATH', root / 'licht.npy'),
                       mock.patch.object(i18n, 'language', 'de'),
                       mock.patch.object(scanner, 'find_device', lambda: 'pieusb:test'),
                       mock.patch.object(capture, 'scan_preview', partial(capture.scan_preview, run=self.fake)),

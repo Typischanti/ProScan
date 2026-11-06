@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, QMainWindow, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import capture, develop, export, frames, presets, scanner, sheet
+from .. import capture, develop, export, flat, frames, presets, scanner, sheet
 from .. import roll as rolls
 from . import i18n
 from . import theme as t
@@ -23,7 +23,7 @@ from .widgets import (Card, CorrectionPanel, Footer, GridView, Header, ImageView
 # Number pad (and main-row) keys -> correction key and step; see docs/design legend.
 PAD = {'+': ('D', 1), '-': ('D', -1), '7': ('C', 1), '4': ('C', -1), '8': ('M', 1), '5': ('M', -1),
        '9': ('Y', 1), '6': ('Y', -1), '3': ('G', 1), '1': ('G', -1), '*': ('S', 1), '/': ('S', -1)}
-BUSY = ('preview_run', 'raw')
+BUSY = ('preview_run', 'raw', 'calibrate')
 
 
 def clipping(image):
@@ -356,7 +356,7 @@ class MainWindow(QMainWindow):
             cache.pop(n, None)
         # A new scan gets its own film base measurement; a source picked by hand (B) stays.
         chosen = self.frame(n).get('film_base', {}).get('from')
-        self.frame(n)['film_base'] = {'measured': develop.measure_film_base(self.raw(n)), 'from': chosen}
+        self.frame(n)['film_base'] = {'measured': develop.measure_film_base(self.raw(n)), 'from': chosen, 'flat': flat.stamp()}
         self.frame(n).pop('levels', None)  # measured again from the new scan
         self.roll.save()
         self.sel = n
@@ -616,6 +616,37 @@ class MainWindow(QMainWindow):
             self.picking = None
         self.refresh()
 
+    def calibrate(self):
+        """Ctrl+L: scan the empty film holder for the scanner's light field (see flat.py)."""
+        if self.step in BUSY or self.cropping:
+            return
+        if not self.device or not scanner.features(self.device)['multi_exposure']:
+            return self.say(tr('cal_unsupported'))
+        if QMessageBox.question(self, tr('cal_title'), tr('cal_body')) != QMessageBox.StandardButton.Yes:
+            return
+        self.step_before, self.step, self.scanner_state = self.step, 'calibrate', 'busy'
+        device = self.device
+        self.run(self.scan_pool, lambda: capture.calibrate(device), self.calibrated)
+        self.refresh()
+
+    def calibrated(self, field, error):
+        self.step, self.scanner_state = self.step_before, 'ok' if self.device else 'off'
+        if error:
+            self.refresh()
+            return QMessageBox.warning(self, tr('cal_title'), str(error))
+        flat.save(field)
+        for cache in (self.raw_cache, self.images, self.thumbs, self.auto, self.before, self.preset_thumbs):
+            cache.clear()
+        if self.roll:
+            # Film base and levels are measured again under the new light (see frames.py); exports follow.
+            for frame in self.roll.frames:
+                frames.measured_base(self.roll, frame['number'])
+                frames.levels(self.roll, frame['number'])
+            self.roll.save()
+            for frame in self.roll.frames:
+                self.export(frame['number'])
+        self.say(tr('cal_done'))
+
     def contact_sheet(self, style):
         """Ctrl+K (paper) / Ctrl+Shift+K (film strips): the roll on one JPEG in the export folder, made in the background."""
         if not self.roll or not self.roll.frames:
@@ -751,6 +782,8 @@ class MainWindow(QMainWindow):
             self.history(back=False)
         elif ctrl and key == Qt.Key.Key_S:
             self.save_preset()
+        elif ctrl and key == Qt.Key.Key_L:
+            self.calibrate()
         elif ctrl and key == Qt.Key.Key_K:
             self.contact_sheet('film' if mods & Qt.KeyboardModifier.ShiftModifier else 'paper')
         elif ctrl and key == Qt.Key.Key_C:
@@ -855,7 +888,7 @@ class MainWindow(QMainWindow):
         self.panel.setVisible(has and not self.cropping)
         self.strip.setVisible(has)
         self.footer.setVisible(True)
-        steps = {'none': tr('step_none'), 'load': tr('step_load'), 'preview_run': tr('step_preview_run'),
+        steps = {'none': tr('step_none'), 'load': tr('step_load'), 'preview_run': tr('step_preview_run'), 'calibrate': tr('step_calibrate'),
                  'preview': tr('step_preview'), 'raw': tr('step_raw'), 'fail': tr('step_fail'),
                  'rescan_load': tr('step_rescan', n=self.target or 0), 'preview_rescan': tr('step_rescan_preview')}
         step = 'preview_rescan' if self.step == 'preview' and self.rescanning else self.step

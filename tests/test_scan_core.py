@@ -10,7 +10,7 @@ import numpy as np
 import tifffile
 from PySide6.QtGui import QGuiApplication
 
-from proscan import capture, develop, dng, export, infrared, multiexposure, pnm, scanner, sheet
+from proscan import capture, develop, dng, export, flat, frames, infrared, multiexposure, pnm, scanner, sheet
 from proscan.roll import Roll
 
 SETTINGS = {'exposure': [3000] * 4, 'gain': [19] * 4, 'offset': [0] * 4, 'light': 4, 'double': 0}
@@ -267,6 +267,48 @@ class InfraredTests(unittest.TestCase):
         ir[np.random.default_rng(2).random((100, 100)) < .05] = 8000  # far too many marks to be dust
         with self.assertRaises(infrared.InfraredRejected):
             infrared.dust_mask(counts(np.full((100, 100, 3), 30000.)), ir)
+
+
+class FlatFieldTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        patch = mock.patch.object(flat, 'PATH', Path(folder.name) / 'licht.npy')
+        patch.start()
+        self.addCleanup(patch.stop)
+        flat._cache.clear()
+        self.addCleanup(flat._cache.clear)
+        yy, xx = np.mgrid[0:600, 0:900] / np.array([600, 900])[:, None, None]
+        # Less light towards the edges, most in blue (as measured on the CrystalScan).
+        falloff = 1 - ((xx - .5) ** 2 + (yy - .5) ** 2)[..., None] * np.array([.2, .3, .45])
+        self.empty = 40000 * falloff
+
+    def test_light_field_evens_out_the_scan(self):
+        flat.save(flat.make(counts(self.empty)))
+        evened = flat.apply(self.empty.astype(np.float32))
+        self.assertLess(np.ptp(evened[30:-30, 30:-30], axis=(0, 1)).max() / 40000, .02)
+        self.assertEqual(flat.apply(np.ones((10, 30, 3), np.float32)).max(), 1)  # another shape: left alone
+
+    def test_unsuitable_scans_are_refused(self):
+        with self.assertRaises(flat.CalibrationRejected):
+            flat.make(counts(self.empty * 2))  # overexposed
+        picture = self.empty.copy()
+        picture[100:300, 200:500] *= .2  # a picture, not the empty holder
+        with self.assertRaises(flat.CalibrationRejected):
+            flat.make(counts(picture))
+
+    def test_calibration_scan_runs_shorter_and_new_light_remeasures(self):
+        fake = FakeScanner(self.empty * 16 / 4)  # without film far more light: clips at the reference exposure
+        field = capture.calibrate('pieusb:0', run=fake)
+        passes = [a for a in fake.calls if '--output-file' in a][1:]
+        self.assertTrue(all(any(x.startswith('--exposure-time-r=') for x in a) for a in passes))
+        self.assertIn('--resolution=600', passes[0])
+        flat.save(field)
+        roll = Roll.create({'name': 'Licht', 'film_type': 'colour_negative'}, root=Path(tempfile.mkdtemp(dir=flat.PATH.parent)))
+        roll.add_frame(lambda d: capture.scan_raw('pieusb:0', d, infrared=False, multi_exposure=False, run=FakeScanner(film())))
+        stamp = flat.stamp()
+        frames.measured_base(roll, 1)
+        self.assertEqual(roll.frames[0]['film_base']['flat'], stamp)
 
 
 class CaptureAndRollTests(unittest.TestCase):

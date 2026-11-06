@@ -87,6 +87,7 @@ Other keys:
 | **Ctrl+Shift+V** | Paste it onto every frame of the roll |
 | **Ctrl+Z**, **Ctrl+Shift+Z** | Undo / redo, per frame |
 | **Ctrl+E** | Export the frame again |
+| **Ctrl+L** | Calibrate the scanner's light with the empty film holder (once; see below) |
 | **Ctrl+K** | Contact sheet on paper: the whole roll on one JPEG in the export folder (`<roll>_Kontaktbogen.jpg`) |
 | **Ctrl+Shift+K** | Contact sheet as black film strips with sprocket holes (`<roll>_Kontaktbogen_Film.jpg`) |
 | **Ctrl+,** | Roll settings |
@@ -167,6 +168,14 @@ each file's metadata.
   black-and-white film, because the silver blocks infrared.
 - **If the scanner stops responding**, the frame stays loaded: switch the scanner
   off and on, then retry with Enter.
+- **Calibrating the light (Ctrl+L):** a scanner can light the frame unevenly (the
+  CrystalScan 7200 is even to 1 % over most of the frame; only the outermost edges,
+  where the film base is measured, get less light). Insert the
+  film holder **empty** and press Ctrl+L: Pro Scan scans it at a short exposure
+  (about a minute) and from then on evens out every scan, on screen and in all
+  exports. Once is enough; it applies to all rolls and is kept in
+  `~/.config/proscan/licht.npy`. Afterwards, the open roll is measured again and
+  re-exported; other rolls are re-measured when opened. Reflecta/PIE scanners only.
 - **Raw scans are large:** about 260 MB per frame at 3600 dpi, so a 36-exposure roll needs around 10 GB.
 
 ## Not done yet

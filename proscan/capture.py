@@ -8,11 +8,12 @@ A raw scan directory holds:
 """
 from pathlib import Path
 import shutil
+import tempfile
 
 import numpy as np
 
 from . import infrared as ir
-from . import multiexposure, pnm, scanner
+from . import flat, multiexposure, pnm, scanner
 from .files import save_json, save_npy
 
 
@@ -87,11 +88,39 @@ def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run, pr
     return report
 
 
+def calibrate(device, run=scanner.run, progress=None):
+    """Scan the empty film holder for the scanner's light field (see flat.py); returns the field.
+
+    Without film far more light arrives than through any film base, so after a preview for the
+    scanner's own settings the scan runs at a fraction of its exposure, shorter still while it clips.
+    Only the shape of the light counts, so the exposure need not scale exactly.
+    """
+    with tempfile.TemporaryDirectory(prefix='proscan-licht-') as folder:
+        preview = Path(folder) / 'vorschau.pnm'
+        try:
+            settings = scanner.telemetry(run(scanner.preview_arguments(device, preview), scanner.PREVIEW_TIMEOUT))
+            ranges = scanner.capabilities(scanner.options(device, run))
+        except ValueError as exc:
+            raise flat.CalibrationRejected(f'Der Scanner meldet keine Belichtungswerte: {exc}') from exc
+        output = Path(folder) / 'licht.pnm'
+        for attempt, share in enumerate((1 / 16, 1 / 32, 1 / 64, 1 / 128)):
+            if progress:
+                progress((attempt + 1) / 5)
+            exposure = [max(low, round(v * share)) for v, (low, _) in zip(settings['exposure'][:3], ranges)]
+            manual = {**settings, 'exposure': exposure + settings['exposure'][3:]}
+            run(scanner.raw_arguments(device, output, manual=manual, dpi=scanner.PREVIEW_DPI), scanner.PREVIEW_TIMEOUT)
+            try:
+                return flat.make(pnm.read(output)[..., :3])
+            except flat.CalibrationRejected as exc:
+                if 'überbelichtet' not in str(exc) or attempt == 3:
+                    raise
+
+
 def load_raw(directory, dust_cleaned):
-    """The raw scan of a frame, dust-cleaned when asked and a dust mask exists."""
+    """The raw scan of a frame with the scanner's light evened out, dust-cleaned when asked and a dust mask exists."""
     directory = Path(directory)
     raw = np.load(directory / 'rohscan.npy', mmap_mode='r')
     mask_path = directory / 'staubmaske.npy'
     if dust_cleaned and mask_path.exists():
-        return ir.repair(raw, np.load(mask_path))
-    return raw
+        raw = ir.repair(raw, np.load(mask_path))
+    return flat.apply(raw)

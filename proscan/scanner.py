@@ -259,13 +259,13 @@ def preview_arguments(device, output):
     return _arguments(device, output, PREVIEW_DPI) if bundled(device) else _generic(device, output, PREVIEW_DPI)
 
 
-def raw_arguments(device, output, infrared=False, manual=None):
+def raw_arguments(device, output, infrared=False, manual=None, dpi=RAW_DPI):
     """One pass of a raw scan: the RGBI reference pass, or a Color pass with manual exposure."""
     if not bundled(device):
         if infrared or manual is not None:
             raise ValueError('Infrarot und Mehrfachbelichtung nur mit Reflecta/PIE-Scannern.')
-        return _generic(device, output, RAW_DPI)
-    args = _arguments(device, output, RAW_DPI) + ['--shading-analysis=yes']
+        return _generic(device, output, dpi)
+    args = _arguments(device, output, dpi) + ['--shading-analysis=yes']
     if infrared:
         if manual is not None:
             raise ValueError('Infrarot nur im Referenzdurchlauf.')
