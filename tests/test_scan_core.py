@@ -108,6 +108,18 @@ CANON_LIDE = """Options specific to device `genesys:libusb:001:007':
 """
 
 
+class UsbResetTests(unittest.TestCase):
+    def test_reset_sends_the_ioctl_to_the_scanners_usb_address(self):
+        import fcntl
+        calls = []
+        with mock.patch('os.open', lambda path, flags: calls.append(path) or 7), mock.patch('os.close'), \
+                mock.patch.object(fcntl, 'ioctl', lambda fd, request, arg: calls.append((fd, request))):
+            scanner.reset('pieusb:libusb:001:004')
+        self.assertEqual(calls, ['/dev/bus/usb/001/004', (7, scanner.USBDEVFS_RESET)])
+        with self.assertRaises(scanner.ScannerError):
+            scanner.reset('pieusb:test')
+
+
 class OtherScannerTests(unittest.TestCase):
     def test_arguments_from_the_options_the_device_lists(self):
         def args(device, text, dpi):
@@ -269,6 +281,24 @@ class InfraredTests(unittest.TestCase):
             infrared.dust_mask(counts(np.full((100, 100, 3), 30000.)), ir)
 
 
+class MetadataTests(unittest.TestCase):
+    def test_dates_as_precise_as_given(self):
+        for text, date in (('Oktober 2025', '2025-10'), ('3. Okt 2025', '2025-10-03'), ('03.10.2025', '2025-10-03'),
+                           ('2025-10-03', '2025-10-03'), ('10/2025', '2025-10'), ('Herbst 2025', '2025'), ('', None)):
+            self.assertEqual(dng.xmp_date(text), date, text)
+
+    def test_camera_details_in_standard_fields(self):
+        import xml.dom.minidom
+        details = {'name': 'Rolle <1> & Co', 'camera': 'Fujica ST701', 'lens': 'Fujinon 50mm', 'iso': '200',
+                   'date': 'Oktober 2025', 'film_stock': 'Kodak Gold 200'}
+        packet = dng.xmp(details, 3).decode()
+        xml.dom.minidom.parseString(packet)  # well-formed despite < and & in the roll name
+        for field in ('<tiff:Model>Fujica ST701', '<exifEX:LensModel>Fujinon 50mm', '<rdf:li>200</rdf:li>',
+                      '<exif:DateTimeOriginal>2025-10', '<rdf:li>Kodak Gold 200</rdf:li>'):
+            self.assertIn(field, packet)
+        self.assertNotIn('tiff:Model', dng.xmp(details, 3, camera=False).decode())  # the DNG keeps the scanner's
+
+
 class FlatFieldTests(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
@@ -400,6 +430,13 @@ class CaptureAndRollTests(unittest.TestCase):
         self.assertEqual(roll.add_frame(lambda d: self.scan(fake, d)), 1)
         self.assertEqual(roll.add_frame(lambda d: self.scan(fake, d)), 2)
         self.assertEqual([f['number'] for f in Roll.open(roll.path).frames], [1, 2])
+
+        # Dust found again later from the saved infrared (python -m proscan staub): mask and report come back.
+        mask = np.load(roll.frame_dir(1) / 'staubmaske.npy')
+        (roll.frame_dir(1) / 'staubmaske.npy').unlink()
+        dust = capture.redetect_dust(roll.frame_dir(1))
+        np.testing.assert_array_equal(np.load(roll.frame_dir(1) / 'staubmaske.npy'), mask)
+        self.assertEqual(json.loads((roll.frame_dir(1) / 'scan.json').read_text())['dust'], dust)
 
         replaced = roll.rescan_frame(2, lambda d: self.scan(fake, d))
         self.assertTrue((replaced / 'rohscan.npy').exists())

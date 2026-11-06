@@ -88,8 +88,11 @@ def dust_mask(reference, infrared):
     # Spots are several pixels wide, so offsets next to the best one always score nearly as well;
     # the match is clear when it beats every offset two or more pixels away.
     distant = max(s for s, y, x in scores if abs(y - dy) > 1 or abs(x - dx) > 1)
-    # Never guess an ambiguous offset or one at the search boundary.
-    if score < .25 or abs(dy) == 2 or abs(dx) == 2 or score - distant < .1:
+    # Never guess an ambiguous offset or one at the search boundary. Relative, as frames differ: little
+    # dust matches rarely by chance (that chance is the share of small visible defects), a lot of
+    # elongated dust overlaps more at distant offsets too.
+    chance = float(visible.mean())
+    if score < max(.15, 5 * chance) or abs(dy) == 2 or abs(dx) == 2 or score - distant < .2 * score:
         raise InfraredRejected('Infrarot-Staubstellen lassen sich dem Bild nicht eindeutig zuordnen.')
     mask = _small_spots(np.roll(candidates, (dy, dx), (0, 1)), visible, np.roll(ir_drop, (dy, dx), (0, 1)), red_drop)
     # One pixel more all round: a speck's soft edge is below the thresholds and stayed as a faint ring.

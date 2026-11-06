@@ -3,6 +3,7 @@
   python -m proscan
   python -m proscan neu "<Rollenname>" --filmtyp colour_negative
   python -m proscan scan "<Rollenname>"
+  python -m proscan staub "<Rollenname>"   (Staub aller Bilder neu suchen, dann neu exportieren)
 """
 import argparse
 import tempfile
@@ -44,6 +45,18 @@ def scan(roll):
                 print('  Exportiert:', path)
 
 
+def redo_dust(roll):
+    """Find every frame's dust again from its saved infrared, then export the frame again."""
+    for frame in roll.frames:
+        n = frame['number']
+        if not (roll.frame_dir(n) / 'infrarot.npy').exists():
+            print(f'Bild {n}: kein Infrarot')
+            continue
+        dust = capture.redetect_dust(roll.frame_dir(n))
+        print(f'Bild {n}:', dust.get('reason') or f'{dust.get("selected_pixels", 0)} Pixel Staub', flush=True)
+        export.export_frame(roll, n)
+
+
 def main():
     parser = argparse.ArgumentParser(prog='proscan')
     commands = parser.add_subparsers(dest='command')
@@ -52,6 +65,7 @@ def main():
     new.add_argument('--filmtyp', choices=rolls.FILM_TYPES, required=True)
     new.add_argument('--filmmaterial')
     commands.add_parser('scan', help='Bilder einer Rolle scannen').add_argument('name')
+    commands.add_parser('staub', help='Staub aller Bilder einer Rolle neu suchen und neu exportieren').add_argument('name')
     args = parser.parse_args()
     if args.command is None:
         from .gui import main as gui
@@ -61,6 +75,8 @@ def main():
         if args.filmmaterial:
             details['film_stock'] = args.filmmaterial
         print('Angelegt:', rolls.Roll.create(details).path)
+    elif args.command == 'staub':
+        redo_dust(rolls.Roll.open(rolls.ROOT / rolls.validate_name(args.name)))
     else:
         try:
             scan(rolls.Roll.open(rolls.ROOT / rolls.validate_name(args.name)))

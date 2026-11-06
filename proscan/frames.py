@@ -70,7 +70,14 @@ def roll_balance(roll):
 
 
 def params(roll, n, base, image=None):
-    """The frame's auto correction, measured on its cropped screen-size scan (rotation does not matter)."""
+    """The frame's auto correction, measured on its cropped screen-size scan (rotation does not matter).
+
+    A frame locked to another (auto_from, key U) takes that frame's auto correction, so a sequence of
+    the same scene prints alike.
+    """
+    source = roll.frames[n - 1].get('auto_from')
+    if source and source != n and 1 <= source <= len(roll.frames):
+        return params(roll, source, film_base(roll, source)[0])
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
     scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')

@@ -316,12 +316,16 @@ class GuiFlowTests(unittest.TestCase):
 
         def hung(*args, **kwargs):
             raise scanner.ScannerHung('Scanner reagiert seit 360 s nicht.')
-        with mock.patch.object(capture, 'scan_raw', hung):
+        resets = []
+        with mock.patch.object(capture, 'scan_raw', hung), mock.patch.object(scanner, 'reset', resets.append):
             self.key(Qt.Key.Key_Return)
             self.wait(lambda: w.step == 'preview')
             self.key(Qt.Key.Key_Return)
             self.wait(lambda: w.step == 'fail')
+            self.wait(lambda: w.reset_note)
         self.assertEqual(w.scanner_state, 'err')
+        self.assertEqual(resets, ['pieusb:test'])  # reset over USB right away
+        self.assertIn('zurückgesetzt', w.reset_note)
         self.key(Qt.Key.Key_7, '7')  # colour keys do nothing on black-and-white
         self.key(Qt.Key.Key_Escape)
         self.assertEqual((w.step, len(w.roll.frames)), ('load', 1))

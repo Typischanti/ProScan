@@ -96,6 +96,14 @@ _Avoid_: Chroma, colourfulness
 Saturation that changes muted colours most and strong ones least. One of the correction keys.
 _Avoid_: Vividness, smart saturation
 
+**Loupe** (Lupe):
+The frame shown at full resolution, 1:1, while Z is held.
+_Avoid_: Zoom, magnifier
+
+**Auto lock** (Automatik übernehmen):
+A frame taking another frame's automatic correction instead of its own, so a sequence prints alike.
+_Avoid_: Density lock, sync
+
 **Scene** (Szene):
 The kind of picture a frame shows (portrait, landscape, night …), which shapes its auto correction; one per frame, Standard by default.
 _Avoid_: Mode, filter

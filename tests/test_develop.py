@@ -74,6 +74,21 @@ class FilmBaseTests(unittest.TestCase):
             self.assertEqual(frames.film_base(roll, 3)[1:], (4, 'chosen'))
 
 
+class AutoLockTests(unittest.TestCase):
+    def test_locked_frame_takes_the_auto_correction_of_its_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            roll = Roll.create({'name': 'R', 'film_type': 'colour_negative'}, root=Path(d))
+            for n, light in ((1, 1.), (2, .6)):  # the same scene, the second a little denser
+                roll.frame_dir(n).mkdir(parents=True)
+                np.save(roll.frame_dir(n) / 'rohscan.npy', negative(scene()) * light)
+                roll.frames.append({'number': n, 'crop': dict(INNER), 'correction': dict(develop.AUTO)})
+            own = frames.params(roll, 2, frames.film_base(roll, 2)[0])
+            roll.frames[1]['auto_from'] = 1
+            locked = frames.params(roll, 2, frames.film_base(roll, 2)[0])
+            self.assertEqual(locked, frames.params(roll, 1, frames.film_base(roll, 1)[0]))
+            self.assertNotEqual(locked, own)
+
+
 class NegativeTests(unittest.TestCase):
     def setUp(self):
         self.raw = negative(scene())

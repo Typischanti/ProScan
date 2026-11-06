@@ -137,6 +137,30 @@ def _devices(system):
     return [line.split('\t', 1) for line in text.splitlines() if '\t' in line]
 
 
+USBDEVFS_RESET = ord('U') << 8 | 20  # Linux usbdevfs ioctl, as the usbreset tool sends it
+
+
+def reset(device):
+    """Reset a hung scanner over USB, as if it was unplugged and plugged in again (Linux).
+
+    The SANE device name holds its USB address, e.g. pieusb:libusb:001:004. Afterwards the scanner
+    comes back with a new address, so it has to be found again (find_device).
+    """
+    import fcntl
+    match = re.search(r'libusb:(\d+):(\d+)', device or '')
+    if not match:
+        raise ScannerError('Der Gerätename enthält keine USB-Adresse.')
+    path = f'/dev/bus/usb/{int(match.group(1)):03d}/{int(match.group(2)):03d}'
+    try:
+        fd = os.open(path, os.O_WRONLY)
+        try:
+            fcntl.ioctl(fd, USBDEVFS_RESET, 0)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise ScannerError(f'USB-Reset nicht möglich ({path}): {exc.strerror}') from exc
+
+
 def find_device():
     """The SANE device name of a connected film scanner, or None; a Reflecta/PIE scanner first."""
     for system in (False, True):

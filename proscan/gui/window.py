@@ -26,6 +26,12 @@ PAD = {'+': ('D', 1), '-': ('D', -1), '7': ('C', 1), '4': ('C', -1), '8': ('M', 
 BUSY = ('preview_run', 'raw', 'calibrate')
 
 
+def histogram(image):
+    """(3, 64) share of the pixels per tone, per channel, of an 8-bit RGB image."""
+    sample = image[::2, ::2].reshape(-1, 3)
+    return np.stack([np.bincount(sample[:, c] >> 2, minlength=64) for c in range(3)]) / len(sample)
+
+
 def clipping(image):
     """8-bit sRGB `image` with pure white marked red and pure black blue; (image, white %, black %).
 
@@ -95,6 +101,9 @@ class MainWindow(QMainWindow):
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
         self.picking = None      # index in the preset list while it is open (P)
         self.comparing = False   # Space held: the frame as the plain automatic correction shows it
+        self.zooming = False     # Z held: the loupe, the frame at full resolution 1:1
+        self.loupe = (None, None)  # (key, QImage) of the last frame rendered at full resolution
+        self.loupe_pending = None  # key being rendered in the background
         self.warning = False     # W: mark what prints as pure white or pure black
         self.clipped = (0., 0.)  # white and black share (%) of the selected frame while warning
         self.before = {}         # n -> (key, QImage) of that comparison view
@@ -370,6 +379,13 @@ class MainWindow(QMainWindow):
         self.failure = str(error)
         self.scanner_state = 'err' if isinstance(error, scanner.ScannerHung) else ('ok' if self.device else 'off')
         self.step = 'fail'
+        self.reset_note = ''
+        if isinstance(error, scanner.ScannerHung) and self.device:
+            # A hung scanner is reset over USB right away, so a retry usually works without switching it off.
+            def done(_, problem):
+                self.reset_note = tr('reset_failed', reason=problem) if problem else tr('reset_done')
+                self.refresh()
+            self.run(self.probe_pool, lambda: scanner.reset(self.device), done)
         self.refresh()
 
     def retry_scan(self):
@@ -448,8 +464,10 @@ class MainWindow(QMainWindow):
         """(film base, auto correction) of frame n, the same the exports use; cached per crop, look and base."""
         base = self.film_base(n)[0]
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
+        source = self.frame(n).get('auto_from')
         key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
-               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)))
+               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), source,
+               repr(self.frame(source).get('crop')) if source else None)
         if self.auto.get(n, (None,))[0] != key:
             self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
         return base, self.auto[n][1]
@@ -462,9 +480,10 @@ class MainWindow(QMainWindow):
             image = develop.develop(develop.apply_crop(self.raw(n)[::step, ::step], frame['crop']),
                                     self.roll.details['film_type'], frame['correction'], base, self.roll.settings['look'], auto)
             shares = (0., 0.)
+            hist = histogram(image)
             if warning:
                 image, *shares = clipping(image)
-            cache[n] = (key, qimage(image), shares)
+            cache[n] = (key, qimage(image), shares, hist)
         if warning:
             self.clipped = cache[n][2]
         return cache[n][1]
@@ -472,6 +491,24 @@ class MainWindow(QMainWindow):
     def image(self, n, warning=False):
         """Developed, cropped view of frame n, cached per correction and crop."""
         return self._developed(self.images, n, 1, warning)
+
+    def loupe_image(self, n):
+        """Frame n at full resolution as exported, or None while it is still being developed in the background."""
+        frame = self.frame(n)
+        key = (n, repr(frame['correction']), repr(frame['crop']), repr(self.development(n)), self.roll.settings['look'], flat.stamp())
+        if self.loupe[0] == key:
+            return self.loupe[1]
+        if self.loupe_pending != key:
+            self.loupe_pending, snapshot = key, copy.deepcopy(self.roll)
+
+            def done(image, error):
+                if self.loupe_pending == key:
+                    self.loupe_pending = None
+                    if not error:
+                        self.loupe = (key, qimage((image * 255 + .5).astype(np.uint8)))
+                    self.refresh()
+            self.run(self.export_pool, lambda: frames.render(snapshot, n), done)
+        return None
 
     def before_image(self, n):
         """Frame n with the plain automatic correction (Standard scene, no keys), for comparing."""
@@ -496,8 +533,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def edits(frame):
-        """What undo restores: correction, crop and the chosen film base source."""
-        return copy.deepcopy({key: frame[key] for key in ('correction', 'crop', 'film_base') if key in frame})
+        """What undo restores: correction, crop, the chosen film base source and the auto lock."""
+        return copy.deepcopy({**{key: frame[key] for key in ('correction', 'crop', 'film_base') if key in frame},
+                              'auto_from': frame.get('auto_from')})
 
     def change(self, n, refresh=True, **edits):
         frame = self.frame(n)
@@ -557,6 +595,16 @@ class MainWindow(QMainWindow):
             order = (None, *develop.TONES)
             self.tone = order[(order.index(self.tone) + 1) % len(order)]
             self.render_panel()
+
+    def lock_auto(self, on):
+        """U: the automatic correction of the previous frame (or the frame it is locked to); Shift+U: its own again."""
+        if not self.can_correct():
+            return
+        source = None
+        if on and self.sel > 1:
+            source = self.frame(self.sel - 1).get('auto_from') or self.sel - 1
+        if self.frame(self.sel).get('auto_from') != source:
+            self.change(self.sel, auto_from=source)
 
     def reset_frame(self):
         """0: back to the automatic correction of the frame's scene."""
@@ -826,12 +874,18 @@ class MainWindow(QMainWindow):
             self.start_choosing()
         elif key == Qt.Key.Key_P:
             self.start_presets()
+        elif key == Qt.Key.Key_U:
+            self.lock_auto(not mods & Qt.KeyboardModifier.ShiftModifier)
         elif key == Qt.Key.Key_W:
             self.warning = not self.warning
             self.refresh()
         elif key == Qt.Key.Key_Space:
             if not event.isAutoRepeat() and self.can_correct():
                 self.comparing = True
+                self.refresh()
+        elif key == Qt.Key.Key_Z:
+            if not event.isAutoRepeat() and self.can_correct():
+                self.zooming = True
                 self.refresh()
         elif key in (Qt.Key.Key_H, Qt.Key.Key_F, Qt.Key.Key_V):
             self.key_step({Qt.Key.Key_H: 'H', Qt.Key.Key_F: 'F', Qt.Key.Key_V: 'V'}[key],
@@ -850,6 +904,9 @@ class MainWindow(QMainWindow):
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat() and self.comparing:
             self.comparing = False
+            self.refresh()
+        elif event.key() == Qt.Key.Key_Z and not event.isAutoRepeat() and self.zooming:
+            self.zooming = False
             self.refresh()
         else:
             super().keyReleaseEvent(event)
@@ -949,12 +1006,16 @@ class MainWindow(QMainWindow):
                 comparing = self.comparing and self.can_correct()
                 image = self.before_image(self.sel) if comparing else self.image(self.sel, self.warning)  # sets self.clipped
                 right = self.crop_text(frame['crop'])
-                if comparing:
+                loupe = self.loupe_image(self.sel) if self.zooming and self.can_correct() and not comparing else None
+                if self.zooming and not comparing:
+                    right = tr('loupe') if loupe is not None else tr('loupe_wait')
+                elif comparing:
                     right = tr('comparing')
                 elif self.warning:
                     share = [f'{v:.1f} %'.replace('.', ',' if i18n.language == 'de' else '.') for v in self.clipped]
                     right = tr('clipped', white=share[0], black=share[1])
-                self.view.show(image, info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right))
+                self.view.show(image, info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right),
+                               loupe=loupe)
             else:
                 self.view.show(None)
             self.stack.setCurrentWidget(self.view)
@@ -987,10 +1048,13 @@ class MainWindow(QMainWindow):
                              'sub': {'borrowed': tr('fb_auto', n=self.sel), 'chosen': tr('fb_chosen'), 'estimated': tr('fb_none')}[kind]}
         status = '' if locked else '· ' + tr('corrected' if corrected else 'auto') + (
             f' · {tr("scene_" + scene)}' if scene != 'standard' else '')
+        if not locked and self.frame(self.sel).get('auto_from'):
+            status += ' · ' + tr('auto_from', m=self.frame(self.sel)['auto_from'])
         picking = None
         if self.picking is not None and not locked:
             picking = {'items': self.preset_list(), 'selected': self.picking}
-        self.panel.update_state({'frame': frame_label, 'status': status, 'presets': picking,
+        hist = self.images.get(self.sel, (None, None, None, None))[3] if self.sel and not locked else None
+        self.panel.update_state({'frame': frame_label, 'status': status, 'presets': picking, 'hist': hist,
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
                                  'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'crop': '—' if locked else crop,
                                  'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),
@@ -1026,6 +1090,8 @@ class MainWindow(QMainWindow):
         c.setContentsMargins(30, 28, 30, 28)
         c.addWidget(label(tr('fail_title'), 22))
         c.addWidget(wrapped(tr('fail_body', n=n, reason=self.failure), 14, '#a3a3a3'))
+        if getattr(self, 'reset_note', ''):
+            c.addWidget(wrapped(self.reset_note, 14, '#d0d0d0'))
         c.addWidget(wrapped(tr('fail_safe1', n=n) + '\n' + tr('fail_safe2'), 14, '#d0d0d0'))
         for text, primary in ((tr('fail_action', n=n) + '      Enter', True), (tr('fail_skip', n=n) + '      Esc', False)):
             button = QPushButton(text)

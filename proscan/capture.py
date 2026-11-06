@@ -7,6 +7,7 @@ A raw scan directory holds:
   scan.json       settings and what happened, for later diagnosis
 """
 from pathlib import Path
+import json
 import shutil
 import tempfile
 
@@ -86,6 +87,28 @@ def scan_raw(device, directory, *, infrared, multi_exposure, run=scanner.run, pr
         raise
     shutil.rmtree(passes)
     return report
+
+
+def redetect_dust(directory):
+    """Find the dust of an already scanned frame again from its saved infrared, with today's detection.
+
+    Replaces staubmaske.npy (or removes it when nothing is found or detection refuses) and the dust
+    report in scan.json; returns that report. The raw scan itself is not touched.
+    """
+    directory = Path(directory)
+    report_path = directory / 'scan.json'
+    report = json.loads(report_path.read_text())
+    mask_path = directory / 'staubmaske.npy'
+    try:
+        mask, report['dust'] = ir.dust_mask(np.load(directory / 'rohscan.npy', mmap_mode='r'),
+                                            np.load(directory / 'infrarot.npy', mmap_mode='r'))
+        save_npy(mask_path, mask)
+    except ir.InfraredRejected as exc:
+        report['dust'] = {'status': 'skipped', 'reason': str(exc)}
+        mask_path.unlink(missing_ok=True)
+    report['dust'] = {k: (float(v) if isinstance(v, np.floating) else v) for k, v in report['dust'].items()}
+    save_json(report_path, report)
+    return report['dust']
 
 
 def calibrate(device, run=scanner.run, progress=None):

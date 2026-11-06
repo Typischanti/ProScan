@@ -1,7 +1,7 @@
 """The parts of the main screen, painted to match docs/design/Scan Screen.dc.html."""
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtGui import QColor, QCursor, QFont, QImage, QPainter, QPen
 from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSizePolicy,
                                QVBoxLayout, QWidget)
 
@@ -144,11 +144,12 @@ class ImageView(QWidget):
         self.info = ('', '')
         self.target = QRectF()  # where the image was drawn, for the mouse in crop mode
         self.drag = None        # (what, crop at press, press position) while dragging the crop
+        self.loupe = None       # the frame at full resolution while the loupe is on (Z held)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
-    def show(self, image, mode='normal', crop=None, info=('', ''), preview=('', '', '')):
-        self.image, self.mode, self.crop, self.info = image, mode, crop, info
+    def show(self, image, mode='normal', crop=None, info=('', ''), preview=('', '', ''), loupe=None):
+        self.image, self.mode, self.crop, self.info, self.loupe = image, mode, crop, info, loupe
         self.preview_title, self.preview_yes, self.preview_no = preview
         self.update()
 
@@ -160,7 +161,10 @@ class ImageView(QWidget):
         if self.image is None:
             return
         target = self.target = fitted(self.image.size(), area)
-        p.drawImage(target, self.image)
+        if self.loupe is not None:
+            self._paint_loupe(p, target, area)
+        else:
+            p.drawImage(target, self.image)
         p.setFont(font(12, mono=True))
         p.setPen(QColor('#7a7a7a'))
         below = QRectF(target.left(), target.bottom() + 8, target.width(), 20)
@@ -176,6 +180,16 @@ class ImageView(QWidget):
             self._paint_preview(p, target)
         elif self.mode == 'crop' and self.crop:
             self._paint_crop(p, target)
+
+    def _paint_loupe(self, p, target, area):
+        """The full-resolution frame 1:1, around the point under the mouse (the centre when it is elsewhere)."""
+        pos = self.mapFromGlobal(QCursor.pos())
+        fx = min(max((pos.x() - target.left()) / target.width(), 0), 1) if target.contains(QPointF(pos)) else .5
+        fy = min(max((pos.y() - target.top()) / target.height(), 0), 1) if target.contains(QPointF(pos)) else .5
+        w, h = min(area.width(), self.loupe.width()), min(area.height(), self.loupe.height())
+        x = min(max(fx * self.loupe.width() - w / 2, 0), self.loupe.width() - w)
+        y = min(max(fy * self.loupe.height() - h / 2, 0), self.loupe.height() - h)
+        p.drawImage(QRectF(area.center().x() - w / 2, area.center().y() - h / 2, w, h), self.loupe, QRectF(x, y, w, h))
 
     def _paint_preview(self, p, target):
         # Unmistakably not a finished frame: dashed amber border, watermark, bars with Enter / Esc.
@@ -239,6 +253,8 @@ class ImageView(QWidget):
         self.drag = None
 
     def mouseMoveEvent(self, event):
+        if self.loupe is not None:
+            return self.update()
         if self.mode != 'crop' or not self.crop or self.target.isEmpty():
             return self.unsetCursor()
         pos = event.position()
@@ -413,6 +429,10 @@ class CorrectionPanel(QWidget):
                 ('F', tr('saturation'), 'F / Shift+F', s['bw']), ('V', tr('vibrance'), 'V / Shift+V', s['bw']),
                 ('G', tr('gradation'), 'Num 3 / 1', False), ('S', tr('sharpness'), 'Num × / ÷', False)]
         y = 72
+        if s.get('hist') is not None:
+            self._paint_histogram(p, w, y, s['hist'])
+            y += 76
+        top = y
         tone = s.get('tone')
         for key, name, keys, disabled in rows:
             if key == 'C':
@@ -453,7 +473,7 @@ class CorrectionPanel(QWidget):
             p.setOpacity(1)
             y += 58
         if s['locked'] and s.get('locked_note', True):
-            box = QRectF(18, 72 + 58 * 2.5, w - 36, 44)
+            box = QRectF(18, top + 58 * 2.5, w - 36, 44)
             p.fillRect(box, QColor('#141414'))
             p.setPen(QColor('#3a3a3a'))
             p.drawRect(box)
@@ -496,6 +516,24 @@ class CorrectionPanel(QWidget):
         # The pad only recalls the keys (F1 shows them too): left out when it would cover the panel.
         if s.get('pad', True) and y + 40 <= self.height() - 14 - 5 * 33 - 28 - 12:
             self._paint_pad(p, w, s['bw'])
+
+    def _paint_histogram(self, p, w, y, hist):
+        """Red, green and blue tones of the developed frame, dark to light, drawn over each other."""
+        box = QRectF(18, y, w - 36, 64)
+        p.fillRect(box, QColor('#141414'))
+        peak = max(float(np.sort(hist[:, 1:-1].ravel())[-3]), 1e-6)  # ignore pure black/white spikes when scaling
+        bar = box.width() / hist.shape[1]
+        p.setPen(Qt.PenStyle.NoPen)
+        for c, colour in enumerate(('#d0504a', '#5bbf5b', '#5a7fe0')):
+            p.setBrush(QColor(colour).darker(110))
+            p.setOpacity(.55)
+            for i, v in enumerate(hist[c]):
+                hh = min(1., v / peak) ** .5 * box.height()  # square root: small amounts stay visible
+                p.drawRect(QRectF(box.left() + i * bar, box.bottom() - hh, bar + .5, hh))
+        p.setOpacity(1)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QColor(t.LINE))
+        p.drawRect(box)
 
     def _paint_presets(self, p, w, picking):
         """P: scenes, built-in and own presets, each with a thumbnail of the frame as it would look."""

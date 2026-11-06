@@ -80,6 +80,8 @@ Other keys:
 | **B** | Choose which frame's film base to use |
 | **P** | Presets (see below) |
 | Hold **Space** | Before: the frame with only the automatic correction; let go to see yours |
+| Hold **Z** | Loupe: the frame at full resolution, 1:1, around the mouse (as exported; ready after a few seconds) |
+| **U** / **Shift+U** | Use the previous frame's automatic correction (for a sequence of one scene) / the frame's own again |
 | **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |
@@ -176,13 +178,21 @@ each file's metadata.
   exports. Once is enough; it applies to all rolls and is kept in
   `~/.config/proscan/licht.npy`. Afterwards, the open roll is measured again and
   re-exported; other rolls are re-measured when opened. Reflecta/PIE scanners only.
+- **Histogram:** the panel shows the developed frame's red, green and blue tones, dark to
+  light, above the keys.
+- **Photo metadata:** camera, lens, ISO, date taken and the film stock (as a keyword) are
+  written into the TIFF and JPEG exports in the standard XMP fields photo programs read
+  (Lightroom, digiKam). Dates are taken as precisely as entered: "Oktober 2025", "3.10.2025"
+  or just a year.
+- **A hung scanner** is reset over USB right away; Enter then tries the scan again.
 - **Raw scans are large:** about 260 MB per frame at 3600 dpi, so a 36-exposure roll needs around 10 GB.
 
 ## Not done yet
 
-Film stock profiles, the monitor's colour profile on screen (sRGB is assumed,
-so on a wide-gamut monitor colours look more saturated, as in most image
-viewers), and resetting a hung scanner over USB.
+- Film stock profiles: three Gold 200 rolls differed too much from each other for one
+  fixed profile (film base up to 40 % in blue), so each roll is measured on its own.
+- The monitor's colour profile on screen: sRGB is assumed, so on a wide-gamut monitor
+  colours look more saturated, as in most image viewers.
 
 ## For developers
 
@@ -191,6 +201,8 @@ viewers), and resetting a hung scanner over USB.
 - UI mockups: [docs/design/](docs/design/) (open `Pro Scan Mockups.dc.html`).
 - The patched Reflecta driver and its patches: `proscan/driver/`.
 - Scanning from the command line: `python3 -m proscan neu …`, `python3 -m proscan scan …`.
+- Finding a roll's dust again with the current detection, from the saved infrared, and re-exporting
+  every frame: `python3 -m proscan staub "<roll name>"`.
 
 Tests (they never touch the scanner):
 
