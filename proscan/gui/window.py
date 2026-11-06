@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 import copy
+import os
 import json
 import tempfile
 
@@ -255,6 +256,9 @@ class MainWindow(QMainWindow):
             if names and all((roll.export_folder / (export.file_stem(roll, frame['number']) + suffixes[f])).exists() for f in names):
                 self.exports[frame['number']] = ('ok', '', ', '.join(names))
         roll.save()
+        # Every frame's auto correction (for the strip) measured on all cores at once, not one after another.
+        with ThreadPoolExecutor(os.cpu_count() or 1) as pool:
+            list(pool.map(lambda n: self.development(n, frames.view(roll, n)), [f['number'] for f in roll.frames]))
         self.sel = roll.frames[-1]['number'] if roll.frames else None
         self.step = 'load'
         self.grid = False
@@ -458,10 +462,14 @@ class MainWindow(QMainWindow):
         """(rgb, source, kind) for frame n; while choosing (B), the frame being tried."""
         if self.choosing and n == self.sel:
             return frames.measured_base(self.roll, self.choosing), self.choosing, 'chosen'
-        return frames.film_base(self.roll, n, self.raw(n))
+        # The scan only if already loaded: the film base is measured once and kept, and the strip asks for every frame.
+        return frames.film_base(self.roll, n, self.raw_cache.get(n))
 
-    def development(self, n):
-        """(film base, auto correction) of frame n, the same the exports use; cached per crop, look and base."""
+    def development(self, n, image=None):
+        """(film base, auto correction) of frame n, the same the exports use; cached per crop, look and base.
+
+        image: the frame's screen-size scan, if already at hand (see raw).
+        """
         base = self.film_base(n)[0]
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
         source = self.frame(n).get('auto_from')
@@ -469,7 +477,7 @@ class MainWindow(QMainWindow):
                self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), source,
                repr(self.frame(source).get('crop')) if source else None)
         if self.auto.get(n, (None,))[0] != key:
-            self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
+            self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n) if image is None else image))
         return base, self.auto[n][1]
 
     def _developed(self, cache, n, step, warning=False):

@@ -169,6 +169,14 @@ class NegativeTests(unittest.TestCase):
         vivid = develop.subtractive_saturation(patches, 1, 6)
         gain = lambda before, after: chroma(after) / chroma(before)
         self.assertGreater(gain(patches[0, 2], vivid[0, 2]), gain(red, vivid[0, 0]))  # muted colours gain most
+        self.assertEqual(more.dtype, np.float32)  # float64 would make it twice as slow
+
+    def test_developed_in_bands_as_in_one_piece(self):
+        raw = np.repeat(self.raw, 3, axis=0)  # tall enough to be split across cores
+        c = {**develop.AUTO, 'F': 2, 'Ch': 3}
+        params = develop.analyse(raw, 'colour_negative', BASE, 'frontier')
+        np.testing.assert_array_equal(develop.render(raw, 'colour_negative', BASE, params, c),
+                                      develop._render(raw, 'colour_negative', BASE, params, c, 'frontier'))
 
     def test_saturation_keys_leave_black_and_white_alone(self):
         np.testing.assert_allclose(developed(self.raw, 'bw_negative', correction={'F': 6, 'V': 6}),

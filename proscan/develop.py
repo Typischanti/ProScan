@@ -9,6 +9,9 @@ The auto correction is measured once on the frame's screen-size scan
 (`analyse`) and then applied unchanged at any size (`render`), so the screen
 and every export show the same development.
 """
+import os
+from concurrent.futures import ThreadPoolExecutor
+
 import cv2
 import numpy as np
 
@@ -209,8 +212,22 @@ def _print_curve(v, strength):
     return (1 / (1 + np.exp(-strength * (v - .5))) - a) / (b - a)
 
 
+_POOL = ThreadPoolExecutor(os.cpu_count() or 1)
+
+
 def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
-    """Display-ready sRGB-encoded float32 image (0..1) of `raw` with the frame's auto correction and keys."""
+    """Display-ready sRGB-encoded float32 image (0..1) of `raw` with the frame's auto correction and keys.
+
+    Every pixel is developed on its own, so bands of rows are developed on all cores at once (numpy lets go of the GIL).
+    """
+    rows = -(-raw.shape[0] // (os.cpu_count() or 1))
+    if raw.shape[0] < 64 or rows == raw.shape[0]:
+        return _render(raw, film_type, base, params, correction, look)
+    return np.concatenate(list(_POOL.map(lambda top: _render(raw[top:top + rows], film_type, base, params, correction, look),
+                                         range(0, raw.shape[0], rows))))
+
+
+def _render(raw, film_type, base, params, correction, look):
     c = {**AUTO, **correction}
     scene = SCENES[c['scene']]
     style = dict(LOOKS[look])
@@ -260,7 +277,9 @@ def subtractive_saturation(y, scale, vibrance=0):
     if vibrance:
         muted = 1 - np.clip(dye.max(axis=-1, keepdims=True) / VIBRANT, 0, 1)
         scale = scale * (1 + SATURATION_STEP * vibrance * muted)
-    return _srgb_encode(2 ** -(neutral + np.maximum(scale, 0) * dye))
+    # A plain float scale: np.maximum would make it a float64 scalar and the whole image float64 (twice as slow).
+    scale = np.maximum(scale, 0) if vibrance else max(scale, 0)
+    return _srgb_encode(2 ** -(neutral + scale * dye))
 
 
 def sharpen(image, amount, sigma):
