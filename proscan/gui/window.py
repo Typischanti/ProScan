@@ -240,6 +240,7 @@ class MainWindow(QMainWindow):
                 frame['size'] = list(np.load(roll.frame_dir(frame['number']) / 'rohscan.npy', mmap_mode='r').shape[:2])
             frame.setdefault('crop', develop.default_crop(frame['size']))
             frames.measured_base(roll, frame['number'])
+            frames.levels(roll, frame['number'])
             suffixes = {'TIFF': '.tif', 'JPEG': '.jpg', 'DNG': '.dng'}
             names = export.formats(roll)
             if names and all((roll.export_folder / (export.file_stem(roll, frame['number']) + suffixes[f])).exists() for f in names):
@@ -356,6 +357,7 @@ class MainWindow(QMainWindow):
         # A new scan gets its own film base measurement; a source picked by hand (B) stays.
         chosen = self.frame(n).get('film_base', {}).get('from')
         self.frame(n)['film_base'] = {'measured': develop.measure_film_base(self.raw(n)), 'from': chosen}
+        self.frame(n).pop('levels', None)  # measured again from the new scan
         self.roll.save()
         self.sel = n
         self.step = 'load'
@@ -447,7 +449,7 @@ class MainWindow(QMainWindow):
         base = self.film_base(n)[0]
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
         key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
-               self.frame(n)['correction']['scene'])
+               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)))
         if self.auto.get(n, (None,))[0] != key:
             self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n)))
         return base, self.auto[n][1]

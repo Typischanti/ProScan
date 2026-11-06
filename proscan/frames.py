@@ -44,12 +44,32 @@ def film_base(roll, n, image=None):
     return develop.estimate_film_base(view(roll, n) if image is None else image), None, 'estimated'
 
 
+def levels(roll, n, image=None):
+    """Frame n's scanner levels per channel (see develop.levels); measured once and kept in the roll."""
+    frame = roll.frames[n - 1]
+    if 'levels' not in frame:
+        frame['levels'] = develop.levels(view(roll, n) if image is None else image)
+    return frame['levels']
+
+
+def roll_balance(roll):
+    """The colour negative roll's own balance over all its frames (see develop.roll_balance), else None.
+
+    shortcut: every new frame moves the medians a little, so earlier frames' exports drift slightly until
+    re-exported; freeze the balance per roll if that ever shows.
+    """
+    if roll.details['film_type'] != 'colour_negative' or not roll.frames:
+        return None
+    numbers = range(1, len(roll.frames) + 1)
+    return develop.roll_balance([levels(roll, m) for m in numbers], [film_base(roll, m)[0] for m in numbers], 'colour_negative')
+
+
 def params(roll, n, base, image=None):
     """The frame's auto correction, measured on its cropped screen-size scan (rotation does not matter)."""
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
     scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')
-    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene)
+    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll))
 
 
 def preview(roll, n):

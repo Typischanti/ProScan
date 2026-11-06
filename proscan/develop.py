@@ -26,19 +26,24 @@ H_STEP = 1 / 12  # midtone brightness: the print gamma changes by 2^(-H/12), bla
 D_STEP = 1 / 6        # stops per density key step: ±12 steps = ±2 stops
 COLOUR_STEP = 1 / 12  # stops per colour key step on its opposite channel
 FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative contrast (density per log exposure)
+# Each dye of a colour negative also absorbs a little in the neighbouring colours, which mutes colours.
+# Taking that share out again, in density (rows sum to 1, so greys stay grey): about 8 % per neighbour.
+DYE_SEPARATION = 1.16 * np.eye(3, dtype=np.float32) - .08 * (1 - np.eye(3, dtype=np.float32))
 
 LOOKS = {
     # balance: how far the auto correction matches the channels (1 = fully neutral);
-    # contrast: steepness of the print S-curve; saturation: chroma gain; warmth: stops towards red/yellow.
-    'frontier': {'balance': .75, 'contrast': 4.5, 'saturation': 1.15, 'warmth': .06},
-    'faithful': {'balance': .45, 'contrast': 3., 'saturation': 1., 'warmth': 0.},
+    # crossover: how much of a frame's own per-channel contrast difference stays (0 = all channels alike;
+    # colour negatives with a roll balance); contrast: steepness of the print S-curve;
+    # saturation: dye gain (subtractive, like F); warmth: stops towards red/yellow.
+    'frontier': {'balance': .75, 'crossover': .35, 'contrast': 4.5, 'saturation': 1.24, 'warmth': .06},
+    'faithful': {'balance': .45, 'crossover': .6, 'contrast': 3., 'saturation': 1., 'warmth': 0.},
 }
 # Scenes adjust the auto correction for a kind of picture. target: where the auto correction aims the
 # median tone (.42 standard); contrast, saturation: factors on the look's; warmth: stops added to the look's.
 SCENES = {
     'standard': {},
-    'portrait': {'contrast': .72, 'saturation': .82, 'warmth': .08},
-    'landscape': {'contrast': 1.22, 'saturation': 1.32},
+    'portrait': {'contrast': .72, 'saturation': .72, 'warmth': .08},
+    'landscape': {'contrast': 1.22, 'saturation': 1.5},
     'backlit': {'target': .58, 'contrast': .78},  # lighter and softer: opens up the dark subject
     'snow': {'target': .68, 'contrast': 1.05},    # lighter, but keeps its sparkle
     'night': {'target': .2},
@@ -130,25 +135,65 @@ def _stops(raw, film_type, base):
     if film_type == 'colour_positive':
         return np.log2(x / 65535)
     e = np.log2(np.asarray(base, np.float32) / x) / FILM_GAMMA[film_type]
+    if film_type == 'colour_negative':
+        e = e @ DYE_SEPARATION.T
     if film_type == 'bw_negative':
         e = np.repeat(e.mean(axis=2, keepdims=True), 3, axis=2)
     return e
 
 
-def analyse(raw, film_type, base, look, scene='standard'):
+def levels(raw):
+    """A frame's darkest and brightest scanner levels per channel (log2 counts), measured once and kept.
+
+    The centre 80 % only, so the clear film and the gate at the edges don't count.
+    """
+    x = np.asarray(raw, np.float32)
+    h, w = x.shape[:2]
+    x = np.log2(np.maximum(x[h // 10:-h // 10:2, w // 10:-w // 10:2].reshape(-1, 3), 1.))
+    low, high = np.percentile(x, [.2, 99.8], axis=0)
+    return {'low': [float(v) for v in low], 'high': [float(v) for v in high]}
+
+
+def roll_balance(frame_levels, bases, film_type):
+    """The film's own cast across a roll: each channel's black point against the mean of the three, in
+    stops, as the median over its frames (film, mask and scanner are the same on every frame; subjects
+    are not). None without frames.
+    """
+    offsets = []
+    for lv, base in zip(frame_levels, bases):
+        # Clear film (high counts) prints black: the frame's black point comes from its brightest level.
+        black = (np.log2(base) - np.asarray(lv['high'])) / FILM_GAMMA[film_type]
+        offsets.append(black - black.mean())
+    return {'offset': [float(v) for v in np.median(offsets, axis=0)]} if offsets else None
+
+
+def analyse(raw, film_type, base, look, scene='standard', roll=None):
     """The frame's auto correction (JSON-able): per-channel black and white points in stops, and a brightness.
 
     `raw` is the cropped, screen-size scan. Like a print, the clearest film
     becomes black and the densest highlights almost white; `balance` decides
     how far the channels are matched (neutralising a cast), so a green lawn is
     not turned magenta. Thin negatives get lifted by `brightness`.
+
+    With `roll` (see roll_balance; colour negatives), the roll's cast (film, mask, scanner: the same on
+    every frame) is removed fully, and only the frame's own deviation from it is balanced as far as the
+    look says, so a frame full of green forest is not tinted by its own subject.
     """
     balance = LOOKS[look]['balance'] if film_type != 'bw_negative' else 0.
     e = _stops(raw, film_type, base).reshape(-1, 3)
     low, high = np.percentile(e, [.2, 99.8], axis=0)
-    luma_low, luma_high = np.percentile(e @ LUMA, [.2, 99.8])
-    black = luma_low + balance * (low - luma_low)
-    white = luma_high + balance * (high - luma_high)
+    if roll is not None and film_type == 'colour_negative':
+        # The roll's cast fully, the frame's own deviation from it as far as the look balances. The
+        # roll's per-channel contrast is not used: on a real roll it followed the subjects (forest,
+        # leaves, sky) more than the film and turned every frame red. Matching each frame's channel
+        # contrasts mostly (crossover) keeps greys grey from shadow to highlight.
+        cast, span = np.asarray(roll['offset']), high - low
+        black = low.mean() + cast + balance * ((low - low.mean()) - cast)
+        white = black + span.mean() + LOOKS[look]['crossover'] * (span - span.mean())
+    else:
+        luma_low, luma_high = np.percentile(e @ LUMA, [.2, 99.8])
+        black = luma_low + balance * (low - luma_low)
+        white = luma_high + balance * (high - luma_high)
     white = np.maximum(white, black + 1.)  # never stretch less than one stop to full range
     u = np.clip((e - black) / (white - black), 1e-4, 1)
     median = float(np.median(u @ LUMA))
@@ -196,24 +241,22 @@ def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
     else:
         v = np.clip(u ** gamma, 0, 1.2)
         y = _print_curve(v, style['contrast'] * (1 + .12 * c['G']))
-    if film_type != 'bw_negative' and style['saturation'] != 1:
-        luma = (y @ LUMA)[..., None]
-        y = luma + (y - luma) * style['saturation']
-    if film_type != 'bw_negative' and (c['F'] or c['V']):
-        y = subtractive_saturation(np.clip(y, 0, 1), c['F'], c['V'])
+    scale = style['saturation'] * (1 + SATURATION_STEP * c['F'])
+    if film_type != 'bw_negative' and (scale != 1 or c['V']):
+        y = subtractive_saturation(np.clip(y, 0, 1), scale, c['V'])
     return np.clip(y, 0, 1).astype(np.float32)
 
 
-def subtractive_saturation(y, saturation, vibrance):
+def subtractive_saturation(y, scale, vibrance=0):
     """Saturation and vibrance as on film: more colour means more dye, so colours get deeper and darker.
 
     Works on the print's density per channel. The least dense channel is the colour's neutral part and
-    stays; the dye beyond it is scaled. Vibrance scales muted colours fully and strong ones less.
+    stays; the dye beyond it is multiplied by `scale`. Vibrance (in key steps) scales muted colours fully
+    and strong ones less.
     """
     density = np.minimum(-np.log2(np.maximum(srgb_decode(y), 2 ** -12)), 12)
     neutral = density.min(axis=-1, keepdims=True)
     dye = density - neutral
-    scale = 1 + SATURATION_STEP * saturation
     if vibrance:
         muted = 1 - np.clip(dye.max(axis=-1, keepdims=True) / VIBRANT, 0, 1)
         scale = scale * (1 + SATURATION_STEP * vibrance * muted)

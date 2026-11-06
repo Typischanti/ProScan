@@ -142,7 +142,7 @@ class NegativeTests(unittest.TestCase):
     def test_subtractive_saturation(self):
         y = develop.srgb_decode  # only for readability below
         patches = np.array([[[.8, .25, .2], [.5, .5, .5], [.55, .5, .45]]], np.float32)  # red, grey, a muted warm tone
-        more, less = develop.subtractive_saturation(patches, 6, 0), develop.subtractive_saturation(patches, -6, 0)
+        more, less = develop.subtractive_saturation(patches, 1.48), develop.subtractive_saturation(patches, .52)
         chroma = lambda c: float(c.max() - c.min())
         luma = lambda c: float(y(c) @ develop.LUMA)
         red, grey = patches[0, 0], patches[0, 1]
@@ -151,13 +151,23 @@ class NegativeTests(unittest.TestCase):
         self.assertGreater(luma(less[0, 0]), luma(red))
         self.assertAlmostEqual(more[0, 0, 0], red[0], 3)   # the least dense channel (the colour's neutral part) stays
         np.testing.assert_allclose(more[0, 1], grey, atol=1e-5)
-        vivid = develop.subtractive_saturation(patches, 0, 6)
+        vivid = develop.subtractive_saturation(patches, 1, 6)
         gain = lambda before, after: chroma(after) / chroma(before)
         self.assertGreater(gain(patches[0, 2], vivid[0, 2]), gain(red, vivid[0, 0]))  # muted colours gain most
 
     def test_saturation_keys_leave_black_and_white_alone(self):
         np.testing.assert_allclose(developed(self.raw, 'bw_negative', correction={'F': 6, 'V': 6}),
                                    developed(self.raw, 'bw_negative'), atol=1e-6)
+
+    def test_roll_balance_removes_the_films_cast(self):
+        # The same blue-short cast on every frame of a roll (as from film, mask or scanner).
+        cast = negative(scene()) * np.array([1., 1., 1.25], np.float32)
+        lv = develop.levels(cast)
+        balance = develop.roll_balance([lv, lv, lv], [BASE, BASE, BASE], 'colour_negative')
+        cropped = develop.apply_crop(cast, INNER)
+        grey = lambda roll: develop.render(cropped, 'colour_negative', BASE,
+                                           develop.analyse(cropped, 'colour_negative', BASE, 'frontier', roll=roll))[150, 135]
+        self.assertLess(np.ptp(grey(balance)), np.ptp(grey(None)))  # the mid grey is more neutral with the roll's cast
 
     def test_faithful_is_gentler_than_frontier(self):
         frontier, faithful = developed(self.raw), developed(self.raw, look='faithful')
