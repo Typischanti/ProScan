@@ -104,6 +104,10 @@ _Avoid_: Zoom, magnifier
 A frame taking another frame's automatic correction instead of its own, so a sequence prints alike.
 _Avoid_: Density lock, sync
 
+**Film data** (Filmdaten):
+A look that develops colour negatives from the film maker's published curves and spectra: scan to dye, dye to the light in the camera, then a print on virtual paper.
+_Avoid_: Spectral look, emulation
+
 **Film profile** (Filmprofil):
 What a film stock always does differently from other stocks, known in advance: its colour layers' contrast. Film base and cast are not part of it; they are measured on every roll.
 _Avoid_: Film preset, LUT

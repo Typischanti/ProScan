@@ -137,7 +137,9 @@ are hidden.
 Set when starting a roll, changed later with **Ctrl+,**. They apply to the whole roll:
 
 - **Look:** *Frontier* (default) is punchy and warm, like a lab print. *Faithful*
-  (Filmgetreu) is gentler and closer to the film itself.
+  (Filmgetreu) is gentler and closer to the film itself. *Film data* (Filmdaten) develops
+  colour negatives from the film maker's published data (see below): bright and clean,
+  with a blue sky, fresh green and rich but natural colour.
 - **Multi-exposure** (on by default): a second, longer pass for more shadow
   detail. Takes longer. Only on Reflecta/PIE scanners.
 - **Exports:**
@@ -145,6 +147,30 @@ Set when starting a roll, changed later with **Ctrl+,**. They apply to the whole
   - JPEG (sRGB);
   - raw DNG, dust-cleaned or as scanned.
 - **Export folder:** by default the roll's `Export` folder.
+
+## The film data look
+
+For colour negatives, the look *Film data* works the way the film and a lab print really do:
+
+1. From the scan it computes how much dye each colour layer of the film holds. Your scanner's
+   colour bands for this were fitted on 120 real frames of a CrystalScan 7200.
+2. The film stock's characteristic curves give the light that reached each layer in the
+   camera. A grey surface comes out grey at every brightness, whatever the film's quirks
+   (Portra 800's green, for example).
+3. The frame is then printed on virtual Kodak Portra Endura paper, balanced like at a lab:
+   the film's cast goes, some of the frame's own colour stays (warm afternoon light stays warm),
+   and the paper's black is neutral with slightly warm shadows.
+
+The film stock is taken from the roll's film stock name: Kodak Gold 200, Ultramax 400,
+Portra 160/400/800, Ektar 100, Fujicolor C200, Pro 400H and Superia X-TRA 400. Any other
+name is developed as Gold 200. Black-and-white film and slides get the faithful look.
+The number pad, scenes and presets work as in the other looks. The first frame of a film stock
+takes about 2 seconds longer while its tables are built.
+
+Data: film and paper curves and spectra from the [spektrafilm](https://github.com/andreavolpato/agx-emulsion)
+project by Andrea Volpato, digitised from the Kodak and Fujifilm data sheets, and the CIE 1931
+standard observer ([CIE 018:2019](https://doi.org/10.25039/CIE.DS.xvudnb9b)); both CC BY-SA 4.0.
+Pro Scan's compact copy is `proscan/data/films.json`, under the same licence.
 
 ## Where your files are
 

@@ -1,7 +1,7 @@
 """What developing a frame needs, shared by the screen and the exports so both show the same image."""
 import numpy as np
 
-from . import capture, develop, flat
+from . import capture, develop, filmdata, flat
 from .files import save_npy
 
 SHARPEN_SIGMA = 1.  # pixels at the raw scan's 3600 dpi
@@ -62,6 +62,18 @@ def gain(roll):
     return develop.film_gain(roll.details.get('film_stock')) if roll.details['film_type'] == 'colour_negative' else None
 
 
+def film_colour(roll, n):
+    """Frame n's colour from the film data (see filmdata.deviation), for the roll's cast; measured once and kept."""
+    frame, key = roll.frames[n - 1], filmdata.stock(roll.details.get('film_stock'))
+    stored = frame.get('film_colour', {})
+    if stored.get('stock') != key or stored.get('flat', '') != flat.stamp():
+        image = view(roll, n)
+        h, w = image.shape[:2]
+        e = filmdata.exposure(image[h // 10:-h // 10:2, w // 10:-w // 10:2], film_base(roll, n, image)[0], key)
+        frame['film_colour'] = {'dev': [float(v) for v in filmdata.deviation(e)], 'stock': key, 'flat': flat.stamp()}
+    return frame['film_colour']['dev']
+
+
 def roll_balance(roll):
     """The colour negative roll's own balance over all its frames (see develop.roll_balance), else None.
 
@@ -71,6 +83,8 @@ def roll_balance(roll):
     if roll.details['film_type'] != 'colour_negative' or not roll.frames:
         return None
     numbers = range(1, len(roll.frames) + 1)
+    if roll.settings['look'] == 'filmdata':
+        return {'cast': [float(v) for v in np.median([film_colour(roll, m) for m in numbers], axis=0)]}
     return develop.roll_balance([levels(roll, m) for m in numbers], [film_base(roll, m)[0] for m in numbers], 'colour_negative',
                                 gain(roll))
 
@@ -87,7 +101,8 @@ def params(roll, n, base, image=None):
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
     scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')
-    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll), gain(roll))
+    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll), gain(roll),
+                           roll.details.get('film_stock'))
 
 
 def preview(roll, n):

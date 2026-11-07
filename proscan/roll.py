@@ -14,7 +14,7 @@ from .files import save_json
 
 ROOT = Path.home() / 'Bilder' / 'Pro Scan'
 FILM_TYPES = ('colour_negative', 'bw_negative', 'colour_positive')
-LOOKS = ('frontier', 'faithful')
+LOOKS = ('frontier', 'faithful', 'filmdata')
 TIFF_SPACES = ('srgb', 'adobe_rgb', 'prophoto')
 DETAILS = ('name', 'film_type', 'film_stock', 'iso', 'push_pull', 'camera', 'lens', 'date', 'developed_by', 'notes')
 

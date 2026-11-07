@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 import cv2
 import numpy as np
 
+from . import filmdata
+
 # Tone ranges for the colour keys: highlights, midtones, shadows; 'Ch' is cyan in the highlights.
 TONES = ('h', 'm', 's')
 TONE_KEYS = tuple(c + z for z in TONES for c in 'CMY')
@@ -186,7 +188,7 @@ def roll_balance(frame_levels, bases, film_type, gain=None):
     return {'offset': [float(v) for v in np.median(offsets, axis=0)]} if offsets else None
 
 
-def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None):
+def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None, stock=None):
     """The frame's auto correction (JSON-able): per-channel black and white points in stops, and a brightness.
 
     `raw` is the cropped, screen-size scan. Like a print, the clearest film
@@ -197,7 +199,14 @@ def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None):
     With `roll` (see roll_balance; colour negatives), the roll's cast (film, mask, scanner: the same on
     every frame) is removed fully, and only the frame's own deviation from it is balanced as far as the
     look says, so a frame full of green forest is not tinted by its own subject.
+
+    The look 'filmdata' develops colour negatives from the film stock's data (see filmdata.py; `stock` is the
+    roll's film stock as typed, `roll` its cast); other film types get the faithful look there.
     """
+    if look == 'filmdata':
+        if film_type == 'colour_negative':
+            return filmdata.analyse(raw, base, filmdata.stock(stock), SCENES[scene], (roll or {}).get('cast'))
+        look = 'faithful'
     balance = LOOKS[look]['balance'] if film_type != 'bw_negative' else 0.
     e = _stops(raw, film_type, base, gain).reshape(-1, 3)
     low, high = np.percentile(e, [.2, 99.8], axis=0)
@@ -247,6 +256,13 @@ def render(raw, film_type, base, params, correction=AUTO, look='frontier'):
 def _render(raw, film_type, base, params, correction, look):
     c = {**AUTO, **correction}
     scene = SCENES[c['scene']]
+    tones = [np.array([c[k + z] for k in 'CMY'], np.float32) for z in TONES]
+    if 'stock' in params:  # the look 'filmdata'
+        y = _srgb_encode(filmdata.print_frame(raw, base, params, c, scene, (D_STEP, COLOUR_STEP, H_STEP), tones))
+        scale = filmdata.LOOK['saturation'] * scene.get('saturation', 1) * (1 + SATURATION_STEP * c['F'])
+        return np.clip(subtractive_saturation(np.clip(y, 0, 1), scale, c['V']), 0, 1).astype(np.float32)
+    if look == 'filmdata':
+        look = 'faithful'
     style = dict(LOOKS[look])
     style['contrast'] *= scene.get('contrast', 1)
     style['saturation'] *= scene.get('saturation', 1)
@@ -261,7 +277,6 @@ def _render(raw, film_type, base, params, correction, look):
         shift -= COLOUR_STEP * np.array([c['C'], c['M'], c['Y']], np.float32)
         shift += style['warmth'] * np.array([.5, 0, -.5], np.float32)
     u = np.clip((e - black + shift) / span, 0, None)
-    tones = [np.array([c[k + z] for k in 'CMY'], np.float32) for z in TONES]
     if film_type != 'bw_negative' and any(t.any() for t in tones):
         # Weights over the print tone (0 black .. 1 white) that sum to 1: the same step in all
         # three ranges equals the whole-frame key.
@@ -319,9 +334,9 @@ def srgb_decode(encoded):
     return np.where(encoded <= .04045, encoded / 12.92, np.power((encoded + .055) / 1.055, 2.4))
 
 
-def develop(raw, film_type, correction=AUTO, base=None, look='frontier', params=None, gain=None):
+def develop(raw, film_type, correction=AUTO, base=None, look='frontier', params=None, gain=None, stock=None):
     """8-bit sRGB positive of float32 linear `raw` (scanner counts); measures what it is not given."""
     if base is None and film_type != 'colour_positive':
         base = measure_film_base(raw) or estimate_film_base(raw)
-    params = params or analyse(raw, film_type, base, look, {**AUTO, **correction}['scene'], gain=gain)
+    params = params or analyse(raw, film_type, base, look, {**AUTO, **correction}['scene'], gain=gain, stock=stock)
     return (render(raw, film_type, base, params, correction, look) * 255 + .5).astype(np.uint8)
