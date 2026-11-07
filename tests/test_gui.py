@@ -309,6 +309,30 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(w.frame(3)['correction'], develop.AUTO)
         self.assertEqual(w.dirty, {3})  # exported after the usual pause; frame 2 went when frame 3 was selected
 
+    def test_auto_lock_copied_like_a_correction(self):
+        w = self.w
+        w.create_roll({'name': 'Sperre', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        for _ in range(3):
+            self.scan_frame()
+        w.select(1)
+        self.key(Qt.Key.Key_U, 'u')
+        self.assertIsNone(w.frame(1).get('auto_from'))  # nothing copied yet
+        w.select(2)
+        self.key(Qt.Key.Key_U, 'u', Qt.KeyboardModifier.ControlModifier)
+        w.select(1)
+        self.key(Qt.Key.Key_U, 'u')
+        self.assertEqual(w.frame(1)['auto_from'], 2)    # backwards too
+        self.key(Qt.Key.Key_U, 'u', Qt.KeyboardModifier.ControlModifier)  # copies what frame 1 follows: frame 2
+        w.select(3)
+        self.key(Qt.Key.Key_U, 'u')
+        self.assertEqual(w.frame(3)['auto_from'], 2)
+        w.select(2)
+        self.key(Qt.Key.Key_U, 'u')
+        self.assertIsNone(w.frame(2).get('auto_from'))  # never onto itself
+        w.select(1)
+        self.key(Qt.Key.Key_U, 'U', Qt.KeyboardModifier.ShiftModifier)
+        self.assertIsNone(w.frame(1).get('auto_from'))
+
     def test_hung_scanner_affects_only_that_frame(self):
         w = self.w
         w.create_roll({'name': 'Hängt', 'film_type': 'bw_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))

@@ -81,7 +81,8 @@ Other keys:
 | **P** | Presets (see below) |
 | Hold **Space** | Before: the frame with only the automatic correction; let go to see yours |
 | Hold **Z** | Loupe: the frame at full resolution, 1:1, around the mouse (as exported; ready after a few seconds) |
-| **U** / **Shift+U** | Use the previous frame's automatic correction (for a sequence of one scene) / the frame's own again |
+| **Ctrl+U**, **U** | Copy a frame's automatic correction, apply it to another frame (for a sequence of one scene: they then print alike) |
+| **Shift+U** | The frame's own automatic correction again |
 | **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |

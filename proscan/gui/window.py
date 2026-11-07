@@ -99,6 +99,7 @@ class MainWindow(QMainWindow):
         self.choosing = None     # frame whose film base is being tried while choosing one (B)
         self.dirty = set()       # frames whose exports wait for the export timer
         self.copied = None       # (frame number, correction) from Ctrl+C
+        self.auto_copied = None  # frame whose automatic correction Ctrl+U copied
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
         self.picking = None      # index in the preset list while it is open (P)
         self.comparing = False   # Space held: the frame as the plain automatic correction shows it
@@ -242,6 +243,7 @@ class MainWindow(QMainWindow):
         self.dirty.clear()
         self.choosing = None
         self.picking = None
+        self.auto_copied = None  # a frame number of another roll
         for frame in roll.frames:
             # Frames scanned from the command line carry no correction or crop yet.
             # Older frames lack later keys (the tone ranges); missing keys are neutral.
@@ -604,13 +606,21 @@ class MainWindow(QMainWindow):
             self.tone = order[(order.index(self.tone) + 1) % len(order)]
             self.render_panel()
 
+    def copy_auto(self):
+        """Ctrl+U: copy the frame's automatic correction (or that of the frame it follows), to apply with U."""
+        if self.can_correct():
+            self.auto_copied = self.frame(self.sel).get('auto_from') or self.sel
+            self.say(tr('auto_copied', n=self.auto_copied))
+
     def lock_auto(self, on):
-        """U: the automatic correction of the previous frame (or the frame it is locked to); Shift+U: its own again."""
+        """U: the frame takes the copied automatic correction (see copy_auto); Shift+U: its own again."""
         if not self.can_correct():
             return
-        source = None
-        if on and self.sel > 1:
-            source = self.frame(self.sel - 1).get('auto_from') or self.sel - 1
+        if on and not self.auto_copied:
+            return self.say(tr('auto_nothing_copied'))
+        # Looked up now (the copied frame may follow another one since), and never this frame: no circles.
+        source = (self.frame(self.auto_copied).get('auto_from') or self.auto_copied) if on else None
+        source = None if source == self.sel else source
         if self.frame(self.sel).get('auto_from') != source:
             self.change(self.sel, auto_from=source)
 
@@ -883,7 +893,10 @@ class MainWindow(QMainWindow):
         elif key == Qt.Key.Key_P:
             self.start_presets()
         elif key == Qt.Key.Key_U:
-            self.lock_auto(not mods & Qt.KeyboardModifier.ShiftModifier)
+            if ctrl:
+                self.copy_auto()
+            else:
+                self.lock_auto(not mods & Qt.KeyboardModifier.ShiftModifier)
         elif key == Qt.Key.Key_W:
             self.warning = not self.warning
             self.refresh()
