@@ -233,6 +233,7 @@ class NegativeTests(unittest.TestCase):
         self.assertEqual(develop.film_gain('Kodak Portra 800'), develop.FILM_GAINS['portra800'])
         self.assertEqual(develop.film_gain('portra800'), develop.FILM_GAINS['portra800'])
         self.assertIsNone(develop.film_gain('Kodak Portra 400'))
+        self.assertEqual(develop.film_gain('Cinestill 400D'), develop.FILM_GAINS['cinestill400d'])
         self.assertIsNone(develop.film_gain(None))
         # Green with 17 % more contrast than red, as Portra 800 scans: the gain prints its greys grey again.
         raw = BASE * np.exp2(-np.array([1., 1.17, .88]) * np.linspace(0, 4, 50)[:, None, None] * develop.FILM_GAMMA['colour_negative']

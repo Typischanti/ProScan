@@ -209,6 +209,7 @@ each file's metadata.
   re-exported; other rolls are re-measured when opened. Reflecta/PIE scanners only.
 - **Film stock:** if the roll's film stock contains "Portra 800" (e.g. "Kodak Portra 800"), its green and
   blue are matched to red in contrast. Without it, Portra 800 prints greys and skin yellow-green.
+  "Cinestill 400D" gets its flatter red raised the same way; without it, skies and stone print cold and cyan.
 - **Histogram:** the panel shows the developed frame's red, green and blue tones, dark to
   light, above the keys.
 - **Photo metadata:** camera, lens, ISO, date taken and the film stock (as a keyword) are
@@ -220,9 +221,9 @@ each file's metadata.
 
 ## Not done yet
 
-- Film stock profiles beyond Portra 800: film base and cast differ too much from roll to roll (three
+- Film stock profiles beyond Portra 800 and Cinestill 400D: film base and cast differ too much from roll to roll (three
   Gold 200 rolls: up to 40 % in blue), so each roll is measured on its own. Only the colour layers'
-  contrast is a property of the film stock; it is known for Portra 800 so far, fitted on one roll.
+  contrast is a property of the film stock; it is known for Portra 800 and Cinestill 400D so far, each fitted on one roll.
 - The monitor's colour profile on screen: sRGB is assumed, so on a wide-gamut monitor
   colours look more saturated, as in most image viewers.
 

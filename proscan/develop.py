@@ -34,8 +34,9 @@ FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative con
 # Film stocks whose colour layers differ in contrast from the films the development was tuned on (Kodak Gold 200):
 # factors on the red, green and blue stops. Portra 800: fitted to grey walls and asphalt on a real roll, where
 # green rose 17 % faster than red and blue 12 % slower, printing greys and skin yellow-green.
-# shortcut: one roll, three grey surfaces; refit when more Portra 800 rolls or other stocks show a cast.
-FILM_GAINS = {'portra800': (1., .858, 1.132)}
+# Cinestill 400D: red 30 % flatter, overcast skies and stone printing cyan; fitted to sky, roof and stands on one roll.
+# shortcut: one roll each; refit when more rolls of these stocks or other stocks show a cast.
+FILM_GAINS = {'portra800': (1., .858, 1.132), 'cinestill400d': (1.3, 1., .95)}
 # Each dye of a colour negative also absorbs a little in the neighbouring colours, which mutes colours.
 # Taking that share out again, in density (rows sum to 1, so greys stay grey): about 8 % per neighbour.
 DYE_SEPARATION = 1.16 * np.eye(3, dtype=np.float32) - .08 * (1 - np.eye(3, dtype=np.float32))
