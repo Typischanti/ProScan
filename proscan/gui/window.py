@@ -476,7 +476,7 @@ class MainWindow(QMainWindow):
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
         source = self.frame(n).get('auto_from')
         key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
-               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), source,
+               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), frames.gain(self.roll), source,
                repr(self.frame(source).get('crop')) if source else None)
         if self.auto.get(n, (None,))[0] != key:
             self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n) if image is None else image))
@@ -524,10 +524,10 @@ class MainWindow(QMainWindow):
         """Frame n with the plain automatic correction (Standard scene, no keys), for comparing."""
         frame = self.frame(n)
         base = self.development(n)[0]
-        key = (repr(frame['crop']), repr(base), self.roll.settings['look'])
+        key = (repr(frame['crop']), repr(base), self.roll.settings['look'], frames.gain(self.roll))
         if self.before.get(n, (None,))[0] != key:
             image = develop.develop(develop.apply_crop(self.raw(n), frame['crop']), self.roll.details['film_type'],
-                                    develop.AUTO, base, self.roll.settings['look'])
+                                    develop.AUTO, base, self.roll.settings['look'], gain=frames.gain(self.roll))
             self.before[n] = (key, qimage(image))
         return self.before[n][1]
 
@@ -647,11 +647,13 @@ class MainWindow(QMainWindow):
         items = []
         for kind, ident in presets.available(film_type):
             correction = presets.apply(kind, ident, frame['correction'])
-            key = (self.sel, kind, ident, repr(correction), repr(frame['crop']), repr(base), self.roll.settings['look'])
+            key = (self.sel, kind, ident, repr(correction), repr(frame['crop']), repr(base), self.roll.settings['look'],
+                   frames.gain(self.roll))
             if key not in self.preset_thumbs:
                 if len(self.preset_thumbs) > 200:
                     self.preset_thumbs.clear()
-                self.preset_thumbs[key] = qimage(develop.develop(small, film_type, correction, base, self.roll.settings['look']))
+                self.preset_thumbs[key] = qimage(develop.develop(small, film_type, correction, base, self.roll.settings['look'],
+                                                                 gain=frames.gain(self.roll)))
             if kind == 'own':
                 name, detail = ident, self.summary(correction)
             else:

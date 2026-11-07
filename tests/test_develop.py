@@ -171,6 +171,19 @@ class NegativeTests(unittest.TestCase):
         self.assertGreater(gain(patches[0, 2], vivid[0, 2]), gain(red, vivid[0, 0]))  # muted colours gain most
         self.assertEqual(more.dtype, np.float32)  # float64 would make it twice as slow
 
+    def test_film_stock_channel_contrast(self):
+        self.assertEqual(develop.film_gain('Kodak Portra 800'), develop.FILM_GAINS['portra800'])
+        self.assertEqual(develop.film_gain('portra800'), develop.FILM_GAINS['portra800'])
+        self.assertIsNone(develop.film_gain('Kodak Portra 400'))
+        self.assertIsNone(develop.film_gain(None))
+        # Green with 17 % more contrast than red, as Portra 800 scans: the gain prints its greys grey again.
+        raw = BASE * np.exp2(-np.array([1., 1.17, .88]) * np.linspace(0, 4, 50)[:, None, None] * develop.FILM_GAMMA['colour_negative']
+                             @ np.linalg.inv(develop.DYE_SEPARATION).T)
+        raw = np.repeat(raw, 4, axis=1).astype(np.float32)
+        cast = lambda gain: np.ptp(develop.render(raw, 'colour_negative', BASE, develop.analyse(raw, 'colour_negative', BASE, 'faithful', gain=gain),
+                                                  develop.AUTO, 'faithful')[20:40], axis=-1).mean()
+        self.assertLess(cast((1, 1 / 1.17, 1 / .88)), cast(None) / 3)
+
     def test_developed_in_bands_as_in_one_piece(self):
         raw = np.repeat(self.raw, 3, axis=0)  # tall enough to be split across cores
         c = {**develop.AUTO, 'F': 2, 'Ch': 3}

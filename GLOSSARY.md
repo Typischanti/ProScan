@@ -104,6 +104,10 @@ _Avoid_: Zoom, magnifier
 A frame taking another frame's automatic correction instead of its own, so a sequence prints alike.
 _Avoid_: Density lock, sync
 
+**Film profile** (Filmprofil):
+What a film stock always does differently from other stocks, known in advance: its colour layers' contrast. Film base and cast are not part of it; they are measured on every roll.
+_Avoid_: Film preset, LUT
+
 **Scene** (Szene):
 The kind of picture a frame shows (portrait, landscape, night …), which shapes its auto correction; one per frame, Standard by default.
 _Avoid_: Mode, filter

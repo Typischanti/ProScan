@@ -57,6 +57,11 @@ def levels(roll, n, image=None):
     return frame['levels']
 
 
+def gain(roll):
+    """The roll's film stock channel contrast (see develop.FILM_GAINS), or None."""
+    return develop.film_gain(roll.details.get('film_stock')) if roll.details['film_type'] == 'colour_negative' else None
+
+
 def roll_balance(roll):
     """The colour negative roll's own balance over all its frames (see develop.roll_balance), else None.
 
@@ -66,7 +71,8 @@ def roll_balance(roll):
     if roll.details['film_type'] != 'colour_negative' or not roll.frames:
         return None
     numbers = range(1, len(roll.frames) + 1)
-    return develop.roll_balance([levels(roll, m) for m in numbers], [film_base(roll, m)[0] for m in numbers], 'colour_negative')
+    return develop.roll_balance([levels(roll, m) for m in numbers], [film_base(roll, m)[0] for m in numbers], 'colour_negative',
+                                gain(roll))
 
 
 def params(roll, n, base, image=None):
@@ -81,7 +87,7 @@ def params(roll, n, base, image=None):
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
     scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')
-    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll))
+    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll), gain(roll))
 
 
 def preview(roll, n):

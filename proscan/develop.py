@@ -29,6 +29,11 @@ H_STEP = 1 / 12  # midtone brightness: the print gamma changes by 2^(-H/12), bla
 D_STEP = 1 / 6        # stops per density key step: ±12 steps = ±2 stops
 COLOUR_STEP = 1 / 12  # stops per colour key step on its opposite channel
 FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative contrast (density per log exposure)
+# Film stocks whose colour layers differ in contrast from the films the development was tuned on (Kodak Gold 200):
+# factors on the red, green and blue stops. Portra 800: fitted to grey walls and asphalt on a real roll, where
+# green rose 17 % faster than red and blue 12 % slower, printing greys and skin yellow-green.
+# shortcut: one roll, three grey surfaces; refit when more Portra 800 rolls or other stocks show a cast.
+FILM_GAINS = {'portra800': (1., .858, 1.132)}
 # Each dye of a colour negative also absorbs a little in the neighbouring colours, which mutes colours.
 # Taking that share out again, in density (rows sum to 1, so greys stay grey): about 8 % per neighbour.
 DYE_SEPARATION = 1.16 * np.eye(3, dtype=np.float32) - .08 * (1 - np.eye(3, dtype=np.float32))
@@ -132,14 +137,25 @@ def estimate_film_base(raw):
 
 # --- development ---------------------------------------------------------------------------------
 
-def _stops(raw, film_type, base):
-    """Exposure in stops per channel: for negatives relative to the film base, for positives to full scale."""
+def film_gain(film_stock):
+    """The film stock's channel contrast factors (see FILM_GAINS) from its free-text name, or None."""
+    name = ''.join(ch for ch in (film_stock or '').lower() if ch.isalnum())
+    return next((gain for key, gain in FILM_GAINS.items() if key in name), None)
+
+
+def _stops(raw, film_type, base, gain=None):
+    """Exposure in stops per channel: for negatives relative to the film base, for positives to full scale.
+
+    gain: the film stock's channel contrast factors (see film_gain), colour negatives only.
+    """
     x = np.maximum(np.asarray(raw, np.float32), 1.)
     if film_type == 'colour_positive':
         return np.log2(x / 65535)
     e = np.log2(np.asarray(base, np.float32) / x) / FILM_GAMMA[film_type]
     if film_type == 'colour_negative':
         e = e @ DYE_SEPARATION.T
+        if gain is not None:
+            e = e * np.asarray(gain, np.float32)
     if film_type == 'bw_negative':
         e = np.repeat(e.mean(axis=2, keepdims=True), 3, axis=2)
     return e
@@ -157,7 +173,7 @@ def levels(raw):
     return {'low': [float(v) for v in low], 'high': [float(v) for v in high]}
 
 
-def roll_balance(frame_levels, bases, film_type):
+def roll_balance(frame_levels, bases, film_type, gain=None):
     """The film's own cast across a roll: each channel's black point against the mean of the three, in
     stops, as the median over its frames (film, mask and scanner are the same on every frame; subjects
     are not). None without frames.
@@ -165,12 +181,12 @@ def roll_balance(frame_levels, bases, film_type):
     offsets = []
     for lv, base in zip(frame_levels, bases):
         # Clear film (high counts) prints black: the frame's black point comes from its brightest level.
-        black = (np.log2(base) - np.asarray(lv['high'])) / FILM_GAMMA[film_type]
+        black = (np.log2(base) - np.asarray(lv['high'])) / FILM_GAMMA[film_type] * np.asarray(gain or (1, 1, 1))
         offsets.append(black - black.mean())
     return {'offset': [float(v) for v in np.median(offsets, axis=0)]} if offsets else None
 
 
-def analyse(raw, film_type, base, look, scene='standard', roll=None):
+def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None):
     """The frame's auto correction (JSON-able): per-channel black and white points in stops, and a brightness.
 
     `raw` is the cropped, screen-size scan. Like a print, the clearest film
@@ -183,7 +199,7 @@ def analyse(raw, film_type, base, look, scene='standard', roll=None):
     look says, so a frame full of green forest is not tinted by its own subject.
     """
     balance = LOOKS[look]['balance'] if film_type != 'bw_negative' else 0.
-    e = _stops(raw, film_type, base).reshape(-1, 3)
+    e = _stops(raw, film_type, base, gain).reshape(-1, 3)
     low, high = np.percentile(e, [.2, 99.8], axis=0)
     if roll is not None and film_type == 'colour_negative':
         # The roll's cast fully, the frame's own deviation from it as far as the look balances. The
@@ -203,7 +219,8 @@ def analyse(raw, film_type, base, look, scene='standard', roll=None):
     # Gamma that would put the median at the target (0.42), applied only partly, as a lab scanner's auto density does.
     target = SCENES[scene].get('target', .42)
     brightness = float(np.clip((np.log(target) / np.log(max(median, 1e-3))) ** .7, .35, 1.6))
-    return {'black': [float(v) for v in black], 'white': [float(v) for v in white], 'brightness': brightness}
+    params = {'black': [float(v) for v in black], 'white': [float(v) for v in white], 'brightness': brightness}
+    return {**params, 'gain': list(gain)} if gain is not None else params
 
 
 def _print_curve(v, strength):
@@ -237,7 +254,7 @@ def _render(raw, film_type, base, params, correction, look):
     gamma = params['brightness'] * 2 ** (-H_STEP * c['H'])
     black = np.asarray(params['black'], np.float32)
     span = np.asarray(params['white'], np.float32) - black
-    e = _stops(raw, film_type, base)
+    e = _stops(raw, film_type, base, params.get('gain'))
     shift = np.full(3, -D_STEP * c['D'], np.float32)
     if film_type != 'bw_negative':
         # More cyan, magenta or yellow means less of its opposite: red, green or blue.
@@ -302,9 +319,9 @@ def srgb_decode(encoded):
     return np.where(encoded <= .04045, encoded / 12.92, np.power((encoded + .055) / 1.055, 2.4))
 
 
-def develop(raw, film_type, correction=AUTO, base=None, look='frontier', params=None):
+def develop(raw, film_type, correction=AUTO, base=None, look='frontier', params=None, gain=None):
     """8-bit sRGB positive of float32 linear `raw` (scanner counts); measures what it is not given."""
     if base is None and film_type != 'colour_positive':
         base = measure_film_base(raw) or estimate_film_base(raw)
-    params = params or analyse(raw, film_type, base, look, {**AUTO, **correction}['scene'])
+    params = params or analyse(raw, film_type, base, look, {**AUTO, **correction}['scene'], gain=gain)
     return (render(raw, film_type, base, params, correction, look) * 255 + .5).astype(np.uint8)
