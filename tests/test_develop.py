@@ -89,6 +89,64 @@ class AutoLockTests(unittest.TestCase):
             self.assertNotEqual(locked, own)
 
 
+class ColourTests(unittest.TestCase):
+    def roll(self, d, scenes):
+        roll = Roll.create({'name': 'R', 'film_type': 'colour_negative'}, root=Path(d))
+        for n, s in enumerate(scenes, 1):
+            roll.frame_dir(n).mkdir(parents=True)
+            np.save(roll.frame_dir(n) / 'rohscan.npy', negative(s))
+            roll.frames.append({'number': n, 'crop': dict(INNER), 'correction': dict(develop.AUTO)})
+        return roll
+
+    def grey(self, roll, n, x, y):
+        """Colour spread (max/min) of the developed frame n at scan point (x, y)."""
+        image = frames.view(roll, n)
+        base = frames.film_base(roll, n)[0]
+        out = develop.render(image, 'colour_negative', base, frames.params(roll, n, base), develop.AUTO, roll.settings['look'])
+        h, w = out.shape[:2]
+        pixel = out[int(y * h), int(x * w)]
+        return pixel.max() / pixel.min()
+
+    def test_scan_point_finds_the_spot_through_crop_angle_and_turn(self):
+        shape = (200, 300)
+        spot = np.zeros(shape, np.float32)
+        spot[70:74, 180:184] = 1
+        for turn in (0, 90, 180, 270):
+            crop = {**INNER, 'angle': 2., 'turn': turn}
+            shown = develop.apply_crop(spot, crop)
+            y, x = np.unravel_index(np.argmax(shown), shown.shape)
+            sx, sy = develop.scan_point(crop, shape, (x + .5) / shown.shape[1], (y + .5) / shown.shape[0])
+            self.assertAlmostEqual(sx * 300, 182, delta=3, msg=turn)
+            self.assertAlmostEqual(sy * 200, 72, delta=3, msg=turn)
+
+    def test_neutral_spot_takes_out_the_cast(self):
+        for look in ('frontier', 'filmdata'):
+            picked = []
+            for tint in ([1., .8, .6], [1., 1., 1.]):  # a warm light over everything; the ramp's grey is cast too
+                with tempfile.TemporaryDirectory() as d:
+                    roll = self.roll(d, [scene() * tint])
+                    roll.settings['look'] = look
+                    before = self.grey(roll, 1, .6, .75)
+                    roll.frames[0]['neutral'] = [.6, .75]
+                    picked.append(self.grey(roll, 1, .6, .75))
+                    self.assertLessEqual(picked[-1], before + 1e-3, look)
+            # As grey as the look prints a grey shot without a cast (its warm shadows are the look's own).
+            self.assertAlmostEqual(picked[0], picked[1], delta=.01, msg=look)
+            self.assertLess(picked[0], 1.08, look)
+
+    def test_colours_from_another_frame_with_own_brightness(self):
+        with tempfile.TemporaryDirectory() as d:
+            roll = self.roll(d, [scene() * [1., .8, .6], scene() * .5])
+            roll.frames[0]['neutral'] = [.6, .75]
+            base = frames.film_base(roll, 2)[0]
+            own = frames.params(roll, 2, base)
+            roll.frames[1]['colour_from'] = 1
+            taken, source = frames.params(roll, 2, base), frames.params(roll, 1, frames.film_base(roll, 1)[0])
+            np.testing.assert_allclose(np.diff(taken['black']), np.diff(source['black']), atol=1e-6)
+            self.assertAlmostEqual(np.mean(taken['black']), np.mean(own['black']), places=5)
+            self.assertEqual(frames.params(roll, 2, base, colour_from=2), own)  # its own colours while choosing it
+
+
 class NegativeTests(unittest.TestCase):
     def setUp(self):
         self.raw = negative(scene())

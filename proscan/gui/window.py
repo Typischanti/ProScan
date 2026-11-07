@@ -97,6 +97,8 @@ class MainWindow(QMainWindow):
         self.thumbs = {}
         self.auto = {}           # n -> (key, auto correction)
         self.choosing = None     # frame whose film base is being tried while choosing one (B)
+        self.colour_choosing = None  # frame whose colours are being tried while choosing one (L)
+        self.neutral_picking = False  # N: the next click on the frame marks a grey or white surface
         self.dirty = set()       # frames whose exports wait for the export timer
         self.copied = None       # (frame number, correction) from Ctrl+C
         self.auto_copied = None  # frame whose automatic correction Ctrl+U copied
@@ -135,6 +137,7 @@ class MainWindow(QMainWindow):
         body.setSpacing(0)
         self.stack = QStackedWidget()
         self.view = ImageView()
+        self.view.picked.connect(self.pick_neutral)
         self.gridview = GridView()
         self.gridview.frame_clicked.connect(self.select)
         self.card = Card()
@@ -242,6 +245,8 @@ class MainWindow(QMainWindow):
         self.exports.clear()
         self.dirty.clear()
         self.choosing = None
+        self.colour_choosing = None
+        self.neutral_picking = False
         self.picking = None
         self.auto_copied = None  # a frame number of another roll
         for frame in roll.frames:
@@ -478,11 +483,13 @@ class MainWindow(QMainWindow):
         base = self.film_base(n)[0]
         crop = {k: v for k, v in self.frame(n)['crop'].items() if k != 'turn'}
         source = self.frame(n).get('auto_from')
+        colour = self.colour_choosing if self.colour_choosing and n == self.sel else self.frame(n).get('colour_from')
         key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
                self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), self.roll.details.get('film_stock'), source,
-               repr(self.frame(source).get('crop')) if source else None)
+               repr(self.frame(source).get('crop')) if source else None, self.frame(n).get('neutral'), colour,
+               repr([self.frame(colour).get(k) for k in ('crop', 'correction', 'neutral')]) if colour else None)
         if self.auto.get(n, (None,))[0] != key:
-            self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n) if image is None else image))
+            self.auto[n] = (key, frames.params(self.roll, n, base, self.raw(n) if image is None else image, colour))
         return base, self.auto[n][1]
 
     def _developed(self, cache, n, step, warning=False):
@@ -539,7 +546,7 @@ class MainWindow(QMainWindow):
         return self._developed(self.thumbs, n, 6)
 
     def select(self, n):
-        if self.roll and 1 <= n <= len(self.roll.frames) and not self.cropping and not self.choosing and self.picking is None:
+        if self.roll and 1 <= n <= len(self.roll.frames) and self.can_leave():
             if n != self.sel:
                 self.flush_exports()
             self.sel = n
@@ -547,9 +554,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def edits(frame):
-        """What undo restores: correction, crop, the chosen film base source and the auto lock."""
+        """What undo restores: correction, crop, the chosen film base source, the auto lock and the colour balance."""
         return copy.deepcopy({**{key: frame[key] for key in ('correction', 'crop', 'film_base') if key in frame},
-                              'auto_from': frame.get('auto_from')})
+                              **{key: frame.get(key) for key in ('auto_from', 'neutral', 'colour_from')}})
 
     def change(self, n, refresh=True, **edits):
         frame = self.frame(n)
@@ -749,9 +756,57 @@ class MainWindow(QMainWindow):
             self.export_later(self.sel)
             self.refresh()
 
+    def can_leave(self):
+        """No mode is open that belongs to the selected frame (crop, choosing, presets, picking)."""
+        return (not self.cropping and not self.choosing and not self.colour_choosing and not self.neutral_picking
+                and self.picking is None)
+
     def can_correct(self):
-        return bool(self.roll and self.sel and self.step not in ('preview', 'preview_run', 'fail')
-                    and not self.cropping and not self.choosing and self.picking is None)
+        return bool(self.roll and self.sel and self.step not in ('preview', 'preview_run', 'fail') and self.can_leave())
+
+    # --- colour balance: a neutral spot (N) or another frame's colours (L) -------------------------
+
+    def start_neutral(self, on):
+        """N: the next click marks a grey or white surface, which then prints neutral; Shift+N: the automatic balance again."""
+        if not self.can_correct() or self.roll.details['film_type'] == 'bw_negative':
+            return
+        if on:
+            self.grid = False
+            self.neutral_picking = True
+            self.refresh()
+        elif self.frame(self.sel).get('neutral'):
+            self.change(self.sel, neutral=None)
+
+    def pick_neutral(self, x, y):
+        """The click at (x, y), fractions of the frame as shown."""
+        if not self.neutral_picking:
+            return
+        self.neutral_picking = False
+        # Its own neutral spot replaces colours taken from another frame.
+        self.change(self.sel, neutral=develop.scan_point(self.frame(self.sel)['crop'], self.raw(self.sel).shape, x, y),
+                    colour_from=None)
+
+    def start_colour_choosing(self):
+        if not self.can_correct() or self.roll.details['film_type'] == 'bw_negative' or len(self.roll.frames) < 2:
+            return
+        source = self.frame(self.sel).get('colour_from')
+        self.colour_choosing = source or (self.sel - 1 if self.sel > 1 else 2)
+        self.grid = False
+        self.refresh()
+
+    def colour_key(self, key):
+        if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self.colour_choosing = max(1, min(len(self.roll.frames), self.colour_choosing + (1 if key == Qt.Key.Key_Right else -1)))
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Delete):
+            source = None if key == Qt.Key.Key_Delete else self.colour_choosing
+            # The frame's own colours, or those it takes from another: never a circle.
+            source = self.frame(source).get('colour_from') or source if source else None
+            self.colour_choosing = None
+            self.change(self.sel, colour_from=None if source == self.sel else source)
+            return
+        elif key == Qt.Key.Key_Escape:
+            self.colour_choosing = None
+        self.refresh()
 
     # --- choosing a film base (B) -------------------------------------------------------------------
 
@@ -872,6 +927,12 @@ class MainWindow(QMainWindow):
             self.crop_key(event)
         elif self.choosing:
             self.choose_key(key)
+        elif self.colour_choosing:
+            self.colour_key(key)
+        elif self.neutral_picking:
+            if key == Qt.Key.Key_Escape:
+                self.neutral_picking = False
+                self.refresh()
         elif self.picking is not None:
             self.preset_key(key)
         elif enter and self.grid:
@@ -898,6 +959,10 @@ class MainWindow(QMainWindow):
             self.start_choosing()
         elif key == Qt.Key.Key_P:
             self.start_presets()
+        elif key == Qt.Key.Key_N:
+            self.start_neutral(not mods & Qt.KeyboardModifier.ShiftModifier)
+        elif key == Qt.Key.Key_L:
+            self.start_colour_choosing()
         elif key == Qt.Key.Key_U:
             if ctrl:
                 self.copy_auto()
@@ -1041,7 +1106,10 @@ class MainWindow(QMainWindow):
                 elif self.warning:
                     share = [f'{v:.1f} %'.replace('.', ',' if i18n.language == 'de' else '.') for v in self.clipped]
                     right = tr('clipped', white=share[0], black=share[1])
-                self.view.show(image, info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right),
+                if self.neutral_picking:
+                    right = tr('neutral_pick')
+                self.view.show(image, 'pick' if self.neutral_picking else 'normal',
+                               info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right),
                                loupe=loupe)
             else:
                 self.view.show(None)
@@ -1066,7 +1134,10 @@ class MainWindow(QMainWindow):
         film_base = None
         if self.sel and self.step not in ('preview', 'preview_run', 'fail') and not self.cropping:
             base, source, kind = self.film_base(self.sel)
-            if self.choosing:
+            if self.colour_choosing:
+                film_base = {'title': tr('colour_from', m=self.colour_choosing), 'action': tr('fb_choosing'), 'sub': tr('colour_hint'),
+                             'keys': tr('colour_keys'), 'badge': 'FA', 'key': 'L'}
+            elif self.choosing:
                 film_base = {'title': tr('fb_from', m=source), 'action': tr('fb_choosing'), 'sub': tr('fb_choose_hint'),
                              'keys': tr('fb_keys')}
             elif kind in ('borrowed', 'chosen', 'estimated'):
@@ -1077,6 +1148,10 @@ class MainWindow(QMainWindow):
             f' · {tr("scene_" + scene)}' if scene != 'standard' else '')
         if not locked and self.frame(self.sel).get('auto_from'):
             status += ' · ' + tr('auto_from', m=self.frame(self.sel)['auto_from'])
+        elif not locked and self.frame(self.sel).get('colour_from'):
+            status += ' · ' + tr('colours_like', m=self.frame(self.sel)['colour_from'])
+        elif not locked and self.frame(self.sel).get('neutral'):
+            status += ' · ' + tr('neutral_set')
         picking = None
         if self.picking is not None and not locked:
             picking = {'items': self.preset_list(), 'selected': self.picking}
@@ -1085,7 +1160,8 @@ class MainWindow(QMainWindow):
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
                                  'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'crop': '—' if locked else crop,
                                  'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),
-                                 'film_base': film_base, 'pad': not self.choosing, 'locked_note': not self.choosing})
+                                 'film_base': film_base, 'pad': not self.choosing and not self.colour_choosing,
+                                 'locked_note': not self.choosing and not self.colour_choosing and not self.neutral_picking})
 
     def render_strip(self):
         tiles = []
@@ -1100,9 +1176,9 @@ class MainWindow(QMainWindow):
             tiles.append({'n': n, 'image': self.thumb(n), 'state': state, 'selected': n == self.sel and not self.grid,
                           'corrected': frame['correction'] != develop.AUTO, 'export': glyph, 'export_color': color,
                           'progress': progress, 'borrowed': kind in ('borrowed', 'chosen', 'estimated') and n != self.choosing,
-                          'candidate': self.choosing == n,
+                          'candidate': n in (self.choosing, self.colour_choosing),
                           'dim': bool(self.choosing) and n != self.sel and not frames.measured_base(self.roll, n)})
-        if not self.rescanning and not self.choosing:
+        if not self.rescanning and not self.choosing and not self.colour_choosing:
             state = {'preview_run': 'preview', 'preview': 'preview', 'raw': 'scanning', 'fail': 'failed'}.get(self.step, 'empty')
             tiles.append({'n': len(self.roll.frames) + 1, 'image': None, 'state': state,
                           'selected': self.step in ('preview', 'fail') or not self.sel, 'corrected': False,

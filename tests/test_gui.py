@@ -333,6 +333,39 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_U, 'U', Qt.KeyboardModifier.ShiftModifier)
         self.assertIsNone(w.frame(1).get('auto_from'))
 
+    def test_neutral_spot_and_colours_from_another_frame(self):
+        w = self.w
+        w.create_roll({'name': 'Grau', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        for _ in range(3):
+            self.scan_frame()
+        w.select(1)
+        w.pick_neutral(.5, .5)
+        self.assertIsNone(w.frame(1).get('neutral'))  # only after N
+        self.key(Qt.Key.Key_N, 'n')
+        self.assertEqual(w.view.mode, 'pick')
+        w.view.picked.emit(.5, .5)
+        self.assertEqual(len(w.frame(1)['neutral']), 2)
+        self.assertFalse(w.neutral_picking)
+        w.select(3)
+        self.key(Qt.Key.Key_L, 'l')
+        self.assertEqual(w.colour_choosing, 2)
+        self.key(Qt.Key.Key_Left)
+        w.select(2)                                   # no other frame while choosing
+        self.assertEqual(w.sel, 3)
+        self.key(Qt.Key.Key_Return)
+        self.assertEqual(w.frame(3)['colour_from'], 1)
+        self.assertNotEqual(w.development(3)[1], frames.params(w.roll, 3, w.development(3)[0], colour_from=3))
+        w.select(1)
+        self.key(Qt.Key.Key_L, 'l')
+        self.key(Qt.Key.Key_Right)
+        self.key(Qt.Key.Key_Right)
+        self.key(Qt.Key.Key_Return)                   # frame 3 takes frame 1's: never a circle
+        self.assertIsNone(w.frame(1).get('colour_from'))
+        self.key(Qt.Key.Key_N, 'N', Qt.KeyboardModifier.ShiftModifier)
+        self.assertIsNone(w.frame(1).get('neutral'))
+        self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
+        self.assertIsNotNone(w.frame(1).get('neutral'))  # undo brings it back
+
     def test_hung_scanner_affects_only_that_frame(self):
         w = self.w
         w.create_roll({'name': 'Hängt', 'film_type': 'bw_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))

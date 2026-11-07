@@ -104,6 +104,12 @@ _Avoid_: Zoom, magnifier
 A frame taking another frame's automatic correction instead of its own, so a sequence prints alike.
 _Avoid_: Density lock, sync
 
+**Grey point** (Graupunkt):
+A spot the user marks on a grey or white surface of a frame; the frame's colours are balanced so that it prints neutral. The look's own character (such as warm shadows) stays.
+
+**Colours from a frame** (Farben von Bild):
+A frame taking only the colour balance of another frame shot in the same light, with its own brightness. Unlike the auto lock, which takes the whole auto correction.
+
 **Film data** (Filmdaten):
 A look that develops colour negatives from the film maker's published curves and spectra: scan to dye, dye to the light in the camera, then a print on virtual paper.
 _Avoid_: Spectral look, emulation

@@ -5,6 +5,7 @@ from . import capture, develop, filmdata, flat
 from .files import save_npy
 
 SHARPEN_SIGMA = 1.  # pixels at the raw scan's 3600 dpi
+NEUTRAL_SPOT = .006  # half the side of the patch measured around a neutral spot, of the scan's longer side
 
 
 def view(roll, n):
@@ -89,20 +90,38 @@ def roll_balance(roll):
                                 gain(roll))
 
 
-def params(roll, n, base, image=None):
+def params(roll, n, base, image=None, colour_from=None):
     """The frame's auto correction, measured on its cropped screen-size scan (rotation does not matter).
 
     A frame locked to another (auto_from, key U) takes that frame's auto correction, so a sequence of
-    the same scene prints alike.
+    the same scene prints alike. A frame with colour_from (key L; `colour_from` tries one) takes only that
+    frame's colours, with its own brightness.
     """
-    source = roll.frames[n - 1].get('auto_from')
+    frame = roll.frames[n - 1]
+    source = frame.get('auto_from')
     if source and source != n and 1 <= source <= len(roll.frames):
         return params(roll, source, film_base(roll, source)[0])
+    own = _own(roll, n, base, image)
+    colour = colour_from or frame.get('colour_from')
+    if colour and colour != n and 1 <= colour <= len(roll.frames) and roll.details['film_type'] != 'bw_negative':
+        return develop.recolour(own, _own(roll, colour, film_base(roll, colour)[0]))
+    return own
+
+
+def _own(roll, n, base, image=None):
+    """Frame n's own auto correction, with its neutral spot (key N) if one is picked."""
+    frame = roll.frames[n - 1]
     image = view(roll, n) if image is None else image
-    cropped = develop.apply_crop(image, roll.frames[n - 1]['crop'], turn=False)
-    scene = roll.frames[n - 1].get('correction', {}).get('scene', 'standard')
-    return develop.analyse(cropped, roll.details['film_type'], base, roll.settings['look'], scene, roll_balance(roll), gain(roll),
-                           roll.details.get('film_stock'))
+    cropped = develop.apply_crop(image, frame['crop'], turn=False)
+    scene = frame.get('correction', {}).get('scene', 'standard')
+    film_type = roll.details['film_type']
+    p = develop.analyse(cropped, film_type, base, roll.settings['look'], scene, roll_balance(roll), gain(roll),
+                        roll.details.get('film_stock'))
+    if frame.get('neutral') and film_type != 'bw_negative':
+        h, w = image.shape[:2]
+        x, y, r = int(frame['neutral'][0] * w), int(frame['neutral'][1] * h), max(2, round(NEUTRAL_SPOT * max(h, w)))
+        p = develop.neutralise(p, image[max(0, y - r):y + r + 1, max(0, x - r):x + r + 1], film_type, base)
+    return p
 
 
 def preview(roll, n):

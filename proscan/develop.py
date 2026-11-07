@@ -100,6 +100,17 @@ def apply_crop(image, crop, turn=True):
     return np.rot90(image, -crop.get('turn', 0) // 90) if turn else image
 
 
+def scan_point(crop, shape, x, y):
+    """The point (x, y) of the cropped and turned frame (fractions) on the scan as it lies in the holder (fractions)."""
+    for _ in range(crop.get('turn', 0) // 90):  # undo each clockwise quarter turn
+        x, y = y, 1 - x
+    h, w = shape[:2]
+    point = np.array([(crop['x'] + x * crop['w']) * w, (crop['y'] + y * crop['h']) * h, 1.])
+    back = cv2.invertAffineTransform(cv2.getRotationMatrix2D((w / 2, h / 2), crop['angle'], 1))
+    sx, sy = back @ point
+    return [float(np.clip(sx / w, 0, 1)), float(np.clip(sy / h, 0, 1))]
+
+
 # --- film base -----------------------------------------------------------------------------------
 
 def measure_film_base(raw):
@@ -230,6 +241,32 @@ def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None, 
     brightness = float(np.clip((np.log(target) / np.log(max(median, 1e-3))) ** .7, .35, 1.6))
     params = {'black': [float(v) for v in black], 'white': [float(v) for v in white], 'brightness': brightness}
     return {**params, 'gain': list(gain)} if gain is not None else params
+
+
+def neutralise(params, patch, film_type, base):
+    """`params` with the colour balanced so that `patch` (a grey or white surface of the scan) prints neutral.
+
+    The frame's brightness stays: only the channels' differences change.
+    """
+    if 'stock' in params:  # the look 'filmdata': the shift taken off each layer's log exposure
+        e = np.median(filmdata.exposure(patch, base, params['stock']).reshape(-1, 3), 0)
+        return {**params, 'shift': [float(v) for v in np.mean(params['shift']) + e - e.mean()]}
+    e = np.median(_stops(patch, film_type, base, params.get('gain')).reshape(-1, 3), 0)
+    black, white = np.asarray(params['black']), np.asarray(params['white'])
+    span = white - black
+    black = e - np.mean((e - black) / span) * span  # the patch at the same height in all three channels
+    return {**params, 'black': [float(v) for v in black], 'white': [float(v) for v in black + span]}
+
+
+def recolour(params, source):
+    """`params` with the colour balance of another frame's auto correction `source`, and its own brightness."""
+    if 'stock' in params:
+        shift = np.asarray(source['shift'])
+        return {**params, 'shift': [float(v) for v in np.mean(params['shift']) + shift - shift.mean()]}
+    black, span = np.asarray(source['black']), np.asarray(source['white']) - np.asarray(source['black'])
+    black = np.mean(params['black']) + black - black.mean()
+    white = black + np.mean(np.asarray(params['white']) - np.asarray(params['black'])) + span - span.mean()
+    return {**params, 'black': [float(v) for v in black], 'white': [float(v) for v in white]}
 
 
 def _print_curve(v, strength):

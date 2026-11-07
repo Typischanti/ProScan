@@ -83,6 +83,8 @@ Other keys:
 | Hold **Z** | Loupe: the frame at full resolution, 1:1, around the mouse (as exported; ready after a few seconds) |
 | **Ctrl+U**, **U** | Copy a frame's automatic correction, apply it to another frame (for a sequence of one scene: they then print alike) |
 | **Shift+U** | The frame's own automatic correction again |
+| **N**, then a click | Grey point: the clicked grey or white surface prints neutral, the colours of the whole frame follow (**Shift+N** removes it) |
+| **L** | Colours from another frame: **← →** choose, **Enter** apply, **Del** own colours, **Esc** cancel. Only the colour balance is taken; the brightness stays the frame's own |
 | **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |

@@ -132,6 +132,7 @@ class Header(QWidget):
 
 class ImageView(QWidget):
     """The current frame, the preview check, or the crop mode over the full scan."""
+    picked = Signal(float, float)  # a click on the frame while picking a neutral spot (N), as fractions of it
 
     def __init__(self):
         super().__init__()
@@ -245,6 +246,9 @@ class ImageView(QWidget):
         return 'move' if left < pos.x() < right and top < pos.y() < bottom else None
 
     def mousePressEvent(self, event):
+        pos = event.position()
+        if self.mode == 'pick' and self.target.contains(pos) and event.button() == Qt.MouseButton.LeftButton:
+            self.picked.emit((pos.x() - self.target.left()) / self.target.width(), (pos.y() - self.target.top()) / self.target.height())
         if self.mode == 'crop' and self.crop and event.button() == Qt.MouseButton.LeftButton:
             what = self._grab(event.position())
             self.drag = (what, dict(self.crop), event.position()) if what else None
@@ -255,6 +259,8 @@ class ImageView(QWidget):
     def mouseMoveEvent(self, event):
         if self.loupe is not None:
             return self.update()
+        if self.mode == 'pick':
+            return self.setCursor(Qt.CursorShape.CrossCursor)
         if self.mode != 'crop' or not self.crop or self.target.isEmpty():
             return self.unsetCursor()
         pos = event.position()
@@ -592,7 +598,7 @@ class CorrectionPanel(QWidget):
         return y + 28
 
     def _paint_film_base(self, p, w, y, fb):
-        """FB block: which frame's film base this frame uses, and B to change it."""
+        """FB block: which frame's film base this frame uses, and B to change it (or, while choosing them, its colours: L)."""
         keys = fb['keys'] or []
         height = 62 + 20 * len(keys)
         if keys:
@@ -605,7 +611,7 @@ class CorrectionPanel(QWidget):
         p.setPen(QColor('#cfcfcf'))
         p.drawRect(badge)
         p.setFont(font(10, mono=True))
-        p.drawText(badge, Qt.AlignmentFlag.AlignCenter, 'FB')
+        p.drawText(badge, Qt.AlignmentFlag.AlignCenter, fb.get('badge', 'FB'))
         p.setFont(font(14))
         p.setPen(QColor(t.TEXT))
         p.drawText(QRectF(50, y + 10, w - 120, 22), Qt.AlignmentFlag.AlignVCenter, fb['title'])
@@ -616,7 +622,7 @@ class CorrectionPanel(QWidget):
         p.setPen(QColor('#4a4a4a'))
         p.drawRect(QRectF(w - 36, y + 12, 18, 18))
         p.setPen(QColor(t.TEXT))
-        p.drawText(QRectF(w - 36, y + 12, 18, 18), Qt.AlignmentFlag.AlignCenter, 'B')
+        p.drawText(QRectF(w - 36, y + 12, 18, 18), Qt.AlignmentFlag.AlignCenter, fb.get('key', 'B'))
         p.setFont(font(12))
         p.setPen(QColor(t.DIM))
         p.drawText(QRectF(18, y + 34, w - 36, 22), Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap, fb['sub'])
