@@ -16,6 +16,20 @@ ROOT = Path.home() / 'Bilder' / 'Pro Scan'
 FILM_TYPES = ('colour_negative', 'bw_negative', 'colour_positive')
 LOOKS = ('frontier', 'faithful', 'filmdata')
 TIFF_SPACES = ('srgb', 'adobe_rgb', 'prophoto')
+# Film stocks to pick in the roll form, with their film type and box speed. The name also selects the
+# stock's film profile (develop.FILM_GAINS) and film data (filmdata.STOCKS); any other name can be typed.
+_C, _BW, _E6 = FILM_TYPES
+FILM_STOCKS = {
+    'Kodak Gold 200': (_C, '200'), 'Kodak UltraMax 400': (_C, '400'), 'Kodak ColorPlus 200': (_C, '200'),
+    'Kodak Portra 160': (_C, '160'), 'Kodak Portra 400': (_C, '400'), 'Kodak Portra 800': (_C, '800'),
+    'Kodak Ektar 100': (_C, '100'), 'Fujifilm C200': (_C, '200'), 'Fujifilm Superia X-TRA 400': (_C, '400'),
+    'Fujifilm Pro 400H': (_C, '400'), 'Cinestill 400D': (_C, '400'), 'Cinestill 800T': (_C, '800'),
+    'Cinestill 50D': (_C, '50'), 'Lomography Color 400': (_C, '400'), 'Ilford XP2 Super 400': (_BW, '400'),
+    'Ilford HP5 Plus 400': (_BW, '400'), 'Ilford FP4 Plus 125': (_BW, '125'), 'Ilford Delta 3200': (_BW, '3200'),
+    'Kodak Tri-X 400': (_BW, '400'), 'Kodak T-Max 100': (_BW, '100'), 'Kodak T-Max 400': (_BW, '400'),
+    'Fomapan 400': (_BW, '400'), 'Kentmere Pan 400': (_BW, '400'),
+    'Kodak Ektachrome E100': (_E6, '100'), 'Fujifilm Velvia 50': (_E6, '50'), 'Fujifilm Provia 100F': (_E6, '100'),
+}
 DETAILS = ('name', 'film_type', 'film_stock', 'iso', 'push_pull', 'camera', 'lens', 'date', 'developed_by', 'notes')
 
 DEFAULT_SETTINGS = {

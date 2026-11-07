@@ -35,7 +35,9 @@ folder, or from the app menu once you've added the menu entry.
 
 1. **Start a roll.** Give it a name and a film type; everything else is
    optional: film stock, ISO, push/pull, camera, lens, date, lab, notes. A new
-   roll starts with the last roll's settings. Previous rolls can be reopened
+   roll starts with the last roll's settings. Picking the film stock from its list sets
+   the film type and ISO, and the stock's film profile follows from its name; any other
+   stock can be typed. Previous rolls can be reopened
    from the same screen.
 2. **Load a frame** into the scanner and press **Enter**. Pro Scan makes a quick
    600 dpi preview, only so you can check that the frame sits right.

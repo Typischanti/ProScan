@@ -110,13 +110,21 @@ class RollForm(QWidget):
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(16)
         self.inputs = {}
-        for key in ('film_stock', 'iso', 'camera', 'lens', 'date', 'developed_by'):
+        for key in ('iso', 'camera', 'lens', 'date', 'developed_by'):
             self.inputs[key] = QLineEdit(str(details.get(key, '')))
             self.inputs[key].setPlaceholderText(tr('optional'))
+        # A list to pick from that still takes any name; picking sets the stock's film type and ISO.
+        self.stock = QComboBox()
+        self.stock.setEditable(True)
+        self.stock.addItems(rolls.FILM_STOCKS)
+        self.stock.setCurrentText(details.get('film_stock', ''))
+        self.stock.textActivated.connect(self.pick_stock)
+        self.inputs['film_stock'] = self.stock.lineEdit()
+        self.inputs['film_stock'].setPlaceholderText(tr('stock_hint'))
         self.push_pull = QComboBox()
         self.push_pull.addItems(['−2', '−1', '±0', '+1', '+2', '+3'])
         self.push_pull.setCurrentText(details.get('push_pull', '±0'))
-        grid.addLayout(field(tr('film_stock'), self.inputs['film_stock']), 0, 0)
+        grid.addLayout(field(tr('film_stock'), self.stock), 0, 0)
         grid.addLayout(field(tr('iso'), self.inputs['iso']), 0, 1)
         grid.addLayout(field(tr('push_pull'), self.push_pull), 0, 2)
         grid.addLayout(field(tr('camera'), self.inputs['camera']), 1, 0)
@@ -205,6 +213,12 @@ class RollForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         widget.setLayout(layout)
         return widget
+
+    def pick_stock(self, name):
+        if name in rolls.FILM_STOCKS:
+            film_type, iso = rolls.FILM_STOCKS[name]
+            self.film_type.button(rolls.FILM_TYPES.index(film_type)).setChecked(True)
+            self.inputs['iso'].setText(iso)
 
     def update_dng(self):
         bw = rolls.FILM_TYPES[self.film_type.checkedId()] == 'bw_negative'

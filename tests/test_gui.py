@@ -235,6 +235,17 @@ class GuiFlowTests(unittest.TestCase):
         self.assertEqual(w.frame(1)['correction'], {**develop.AUTO, 'D': 2})
         self.assertEqual(len(list((w.roll.path / 'Ersetzt').iterdir())), 1)
 
+    def test_film_stock_picked_from_the_list_sets_type_and_iso(self):
+        form = RollForm('start')
+        self.addCleanup(form.deleteLater)
+        form.stock.setCurrentIndex(form.stock.findText('Ilford HP5 Plus 400'))
+        form.stock.textActivated.emit('Ilford HP5 Plus 400')  # as a pick from the list does
+        details = form.values()[0]
+        self.assertEqual((details['film_stock'], details['film_type'], details['iso']), ('Ilford HP5 Plus 400', 'bw_negative', '400'))
+        form.stock.setCurrentText('Agfa Vista 200')           # any other name can still be typed
+        self.assertEqual(form.values()[0]['film_stock'], 'Agfa Vista 200')
+        self.assertEqual(develop.film_gain('Cinestill 400D'), develop.FILM_GAINS['cinestill400d'])  # the list's names find their profile
+
     def test_export_folder_from_roll_settings(self):
         w = self.w
         w.create_roll({'name': 'Ordner', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
