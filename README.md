@@ -140,7 +140,7 @@ are hidden.
 
 Set when starting a roll, changed later with **Ctrl+,**. They apply to the whole roll:
 
-- **Look:** *Frontier* (default) is punchy and warm, like a lab print. *Faithful*
+- **Look:** *Frontier* (default) is bright and warm with open shadows and a gentle contrast, like a lab scan. *Faithful*
   (Filmgetreu) is gentler and closer to the film itself. *Film data* (Filmdaten) develops
   colour negatives from the film maker's published data (see below): bright and clean,
   with a blue sky, fresh green and rich but natural colour.

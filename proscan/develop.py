@@ -46,8 +46,11 @@ LOOKS = {
     # balance: how far the auto correction matches the channels (1 = fully neutral);
     # crossover: how much of a frame's own per-channel contrast difference stays (0 = all channels alike;
     # colour negatives with a roll balance); contrast: steepness of the print S-curve;
-    # saturation: dye gain (subtractive, like F); warmth: stops towards red/yellow.
-    'frontier': {'balance': .75, 'crossover': .35, 'contrast': 4.5, 'saturation': 1.24, 'warmth': .06},
+    # saturation: dye gain (subtractive, like F); warmth: stops towards red/yellow; pivot: the tone where the
+    # S-curve is steepest (see _print_curve).
+    # Frontier: tuned on real rolls towards a lab scanner's prints: open shadows, bright midtones, a gentle
+    # contrast and colour that is clear but not punchy.
+    'frontier': {'balance': .75, 'crossover': .35, 'contrast': 3.5, 'saturation': 1.08, 'warmth': .06, 'pivot': .36},
     'faithful': {'balance': .45, 'crossover': .6, 'contrast': 3., 'saturation': 1., 'warmth': 0.},
 }
 # Scenes adjust the auto correction for a kind of picture. target: where the auto correction aims the
@@ -297,10 +300,11 @@ def recolour(params, source):
     return {**params, 'black': [float(v) for v in black], 'white': [float(v) for v in white]}
 
 
-def _print_curve(v, strength):
-    """S-curve on 0..1 that keeps 0 and 1 in place; `strength` is its steepness."""
-    a, b = 1 / (1 + np.exp(strength / 2)), 1 / (1 + np.exp(-strength / 2))
-    return (1 / (1 + np.exp(-strength * (v - .5))) - a) / (b - a)
+def _print_curve(v, strength, pivot=.5):
+    """S-curve on 0..1 that keeps 0 and 1 in place; `strength` is its steepness, `pivot` the tone where it is
+    steepest (below .5: a short toe and a long shoulder, so shadows stay open and midtones bright)."""
+    a, b = 1 / (1 + np.exp(strength * pivot)), 1 / (1 + np.exp(-strength * (1 - pivot)))
+    return (1 / (1 + np.exp(-strength * (v - pivot))) - a) / (b - a)
 
 
 _POOL = ThreadPoolExecutor(os.cpu_count() or 1)
@@ -354,7 +358,7 @@ def _render(raw, film_type, base, params, correction, look):
         y = _srgb_encode(np.clip(2 ** ((u - 1) * span.mean()) * .95, 0, 1)) ** (2 ** (-H_STEP * c['H']))
     else:
         v = np.clip(u ** gamma, 0, 1.2)
-        y = _print_curve(v, style['contrast'] * (1 + .12 * c['G']))
+        y = _print_curve(v, style['contrast'] * (1 + .12 * c['G']), style.get('pivot', .5))
     scale = style['saturation'] * (1 + SATURATION_STEP * c['F'])
     if film_type != 'bw_negative' and (scale != 1 or c['V']):
         y = subtractive_saturation(np.clip(y, 0, 1), scale, c['V'])

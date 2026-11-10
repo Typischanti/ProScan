@@ -135,7 +135,7 @@ The overall rendering the auto correction aims for: either the Frontier look or 
 _Avoid_: Preset, filter, style, profile
 
 **Frontier look** (Frontier-Look):
-A look that is punchy, warm and kind to skin tones, in the manner of a lab scanner.
+A look in the manner of a lab scanner: open shadows, bright midtones, gentle contrast, warm and kind to skin tones.
 _Avoid_: Lab look, pleasing look
 
 **Faithful look** (Filmgetreu):
