@@ -53,6 +53,11 @@ LOOKS = {
     'frontier': {'balance': .75, 'crossover': .35, 'contrast': 3.5, 'saturation': 1.08, 'warmth': .06, 'pivot': .36},
     'faithful': {'balance': .45, 'crossover': .6, 'contrast': 3., 'saturation': 1., 'warmth': 0.},
 }
+# The Frontier look in other moods, to choose per roll.
+LOOKS.update({'frontier_soft': {**LOOKS['frontier'], 'contrast': 3., 'saturation': 1.02},
+              'frontier_strong': {**LOOKS['frontier'], 'contrast': 4., 'saturation': 1.12, 'pivot': .4},
+              'frontier_bright': {**LOOKS['frontier'], 'pivot': .3},
+              'frontier_warm': {**LOOKS['frontier'], 'warmth': .14}})
 # Scenes adjust the auto correction for a kind of picture. target: where the auto correction aims the
 # median tone (.42 standard); contrast, saturation: factors on the look's; warmth: stops added to the look's.
 SCENES = {

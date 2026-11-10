@@ -14,7 +14,7 @@ from .files import save_json
 
 ROOT = Path.home() / 'Bilder' / 'Pro Scan'
 FILM_TYPES = ('colour_negative', 'bw_negative', 'colour_positive')
-LOOKS = ('frontier', 'faithful', 'filmdata')
+LOOKS = ('frontier', 'frontier_soft', 'frontier_strong', 'frontier_bright', 'frontier_warm', 'faithful', 'filmdata')
 TIFF_SPACES = ('srgb', 'adobe_rgb', 'prophoto')
 # Film stocks to pick in the roll form, with their film type and box speed. The name also selects the
 # stock's film profile (develop.FILM_GAINS) and film data (filmdata.STOCKS); any other name can be typed.

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from proscan import develop, flat, frames
+from proscan import roll as rolls
 from proscan.roll import Roll
 
 BASE = np.array([.30, .14, .07]) * 65535  # orange mask, as measured on Kodak Gold 200
@@ -310,6 +311,16 @@ class NegativeTests(unittest.TestCase):
         grey = lambda roll: develop.render(cropped, 'colour_negative', BASE,
                                            develop.analyse(cropped, 'colour_negative', BASE, 'frontier', roll=roll))[150, 135]
         self.assertLess(np.ptp(grey(balance)), np.ptp(grey(None)))  # the mid grey is more neutral with the roll's cast
+
+    def test_frontier_in_other_moods(self):
+        out = {look: developed(self.raw, look=look) for look in ('frontier', 'frontier_soft', 'frontier_strong', 'frontier_bright', 'frontier_warm')}
+        contrast = lambda y: np.ptp(np.percentile(y[150].mean(1), [25, 75]))  # along the grey ramp
+        self.assertLess(contrast(out['frontier_soft']), contrast(out['frontier']))
+        self.assertGreater(contrast(out['frontier_strong']), contrast(out['frontier']))
+        self.assertGreater(out['frontier_bright'].mean(), out['frontier'].mean())
+        warmth = lambda y: (y[150, :, 0] - y[150, :, 2]).mean()
+        self.assertGreater(warmth(out['frontier_warm']), warmth(out['frontier']))
+        self.assertEqual(set(develop.LOOKS) | {'filmdata'}, set(rolls.LOOKS))  # every look can be chosen
 
     def test_faithful_is_gentler_than_frontier(self):
         frontier, faithful = developed(self.raw), developed(self.raw, look='faithful')

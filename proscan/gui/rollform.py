@@ -141,10 +141,10 @@ class RollForm(QWidget):
         right.setSpacing(18)
         columns.addLayout(right, 1)
         right.addWidget(section(tr('per_roll')))
-        looks, self.look = segmented([tr(look) for look in rolls.LOOKS])
-        self.look.button(rolls.LOOKS.index(settings['look'])).setChecked(True)
-        looks.addStretch()
-        right.addLayout(field(tr('look'), self._wrap(looks)))
+        self.look = QComboBox()
+        self.look.addItems([tr(look) for look in rolls.LOOKS])
+        self.look.setCurrentIndex(rolls.LOOKS.index(settings['look']))
+        right.addLayout(field(tr('look'), self.look))
         if mode == 'settings':
             # Which film profile develops the roll, and a way out of a learned one that went wrong.
             row = QHBoxLayout()
@@ -278,7 +278,7 @@ class RollForm(QWidget):
             details['push_pull'] = self.push_pull.currentText()
         if self.notes.toPlainText().strip():
             details['notes'] = self.notes.toPlainText().strip()
-        settings = {'look': rolls.LOOKS[self.look.checkedId()], 'multi_exposure': self.multi.isChecked(),
+        settings = {'look': rolls.LOOKS[self.look.currentIndex()], 'multi_exposure': self.multi.isChecked(),
                     'export': {'tiff': self.tiff.isChecked(), 'tiff_space': rolls.TIFF_SPACES[self.tiff_space.currentIndex()],
                                'jpeg': self.jpeg.isChecked(), 'dng': self.dng.isChecked(),
                                'dng_dust_cleaned': self.dng_clean.isChecked(), 'folder': self.folder.text().strip() or None}}
