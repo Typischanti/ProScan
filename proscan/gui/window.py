@@ -485,7 +485,7 @@ class MainWindow(QMainWindow):
         source = self.frame(n).get('auto_from')
         colour = self.colour_choosing if self.colour_choosing and n == self.sel else self.frame(n).get('colour_from')
         key = (repr(crop), self.roll.settings['look'], self.roll.details['film_type'], repr(base),
-               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), self.roll.details.get('film_stock'), source,
+               self.frame(n)['correction']['scene'], repr(frames.roll_balance(self.roll)), self.roll.details.get('film_stock'), frames.gain(self.roll), source,
                repr(self.frame(source).get('crop')) if source else None, self.frame(n).get('neutral'), colour,
                repr([self.frame(colour).get(k) for k in ('crop', 'correction', 'neutral')]) if colour else None)
         if self.auto.get(n, (None,))[0] != key:
@@ -534,7 +534,7 @@ class MainWindow(QMainWindow):
         """Frame n with the plain automatic correction (Standard scene, no keys), for comparing."""
         frame = self.frame(n)
         base = self.development(n)[0]
-        key = (repr(frame['crop']), repr(base), self.roll.settings['look'], self.roll.details.get('film_stock'))
+        key = (repr(frame['crop']), repr(base), self.roll.settings['look'], self.roll.details.get('film_stock'), frames.gain(self.roll))
         if self.before.get(n, (None,))[0] != key:
             image = develop.develop(develop.apply_crop(self.raw(n), frame['crop']), self.roll.details['film_type'],
                                     develop.AUTO, base, self.roll.settings['look'], gain=frames.gain(self.roll),
@@ -562,11 +562,23 @@ class MainWindow(QMainWindow):
         frame = self.frame(n)
         self.undo.setdefault(n, []).append(self.edits(frame))
         self.redo[n] = []
+        gain = frames.gain(self.roll)
         frame.update(edits)
+        self.profile_changed(gain)
         self.roll.save()
         self.export_later(n)
         if refresh:
             self.refresh()
+
+    def profile_changed(self, before):
+        """After an edit: a grey point more or less may change the film profile learned from them, and so every frame."""
+        gain = frames.gain(self.roll)
+        if gain != before:
+            for frame in self.roll.frames:
+                self.export_later(frame['number'])
+            if frames.remember_gain(self.roll):
+                self.say(tr('profile_learned', n=sum(1 for f in self.roll.frames if f.get('neutral')),
+                            stock=self.roll.details.get('film_stock', '')))
 
     def clear_notice(self):
         self.notice = ''
@@ -751,7 +763,9 @@ class MainWindow(QMainWindow):
         if source.get(self.sel):
             frame = self.frame(self.sel)
             target.setdefault(self.sel, []).append(self.edits(frame))
+            gain = frames.gain(self.roll)
             frame.update(source[self.sel].pop())
+            self.profile_changed(gain)
             self.roll.save()
             self.export_later(self.sel)
             self.refresh()

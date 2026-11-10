@@ -36,6 +36,7 @@ FILM_GAMMA = {'colour_negative': .6, 'bw_negative': .65}  # typical negative con
 # green rose 17 % faster than red and blue 12 % slower, printing greys and skin yellow-green.
 # Cinestill 400D: red 30 % flatter, overcast skies and stone printing cyan; fitted to sky, roof and stands on one roll.
 # shortcut: one roll each; refit when more rolls of these stocks or other stocks show a cast.
+GREYS, GREY_RANGE = 4, 1.5  # grey points and stops between them that a learned film profile needs (see fit_gain)
 FILM_GAINS = {'portra800': (1., .858, 1.132), 'cinestill400d': (1.3, 1., .95)}
 # Each dye of a colour negative also absorbs a little in the neighbouring colours, which mutes colours.
 # Taking that share out again, in density (rows sum to 1, so greys stay grey): about 8 % per neighbour.
@@ -155,6 +156,22 @@ def film_gain(film_stock):
     """The film stock's channel contrast factors (see FILM_GAINS) from its free-text name, or None."""
     name = ''.join(ch for ch in (film_stock or '').lower() if ch.isalnum())
     return next((gain for key, gain in FILM_GAINS.items() if key in name), None)
+
+
+def fit_gain(greys):
+    """The channel contrast factors (see FILM_GAINS) that make grey surfaces grey at every brightness, or None.
+
+    greys: stops (n, 3) of grey or white surfaces, measured without a gain. On a film whose layers differ
+    in contrast, a channel rises faster or slower than the three's mean from dark grey to white; its
+    factor is one over that slope. None with fewer than GREYS surfaces or less than GREY_RANGE stops
+    between the darkest and the lightest: too little to tell a contrast from a cast.
+    """
+    greys = np.asarray(greys, np.float64).reshape(-1, 3)
+    mean = greys.mean(1)
+    if len(greys) < GREYS or np.ptp(mean) < GREY_RANGE:
+        return None
+    slopes = [np.polyfit(mean, greys[:, k], 1)[0] for k in range(3)]
+    return tuple(float(v) for v in np.clip(1 / np.maximum(slopes, .1), .6, 1.6).round(3))
 
 
 def _stops(raw, film_type, base, gain=None):

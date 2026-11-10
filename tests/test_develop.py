@@ -1,11 +1,12 @@
 """Development checks on synthetic negatives and slides of known exposure."""
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
 
-from proscan import develop, frames
+from proscan import develop, flat, frames
 from proscan.roll import Roll
 
 BASE = np.array([.30, .14, .07]) * 65535  # orange mask, as measured on Kodak Gold 200
@@ -133,6 +134,33 @@ class ColourTests(unittest.TestCase):
             # As grey as the look prints a grey shot without a cast (its warm shadows are the look's own).
             self.assertAlmostEqual(picked[0], picked[1], delta=.01, msg=look)
             self.assertLess(picked[0], 1.08, look)
+
+    def test_film_profile_learned_from_grey_points(self):
+        # A film whose red layer is flatter and blue steeper: greys at five brightnesses, one per frame.
+        film = np.array([.8, 1., 1.2])
+        greys = [BASE * np.exp2(-film * stops * develop.FILM_GAMMA['colour_negative'] @ np.linalg.inv(develop.DYE_SEPARATION).T)
+                 for stops in (1., 2., 3., 4., 5.)]
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(frames, 'PROFILES', Path(d) / 'filmprofile.json'):
+            roll = Roll.create({'name': 'R', 'film_type': 'colour_negative', 'film_stock': 'Neu 400'}, root=Path(d))
+            for n, grey in enumerate(greys, 1):
+                raw = np.full((200, 300, 3), grey, np.float32)
+                roll.frame_dir(n).mkdir(parents=True)
+                np.save(roll.frame_dir(n) / 'rohscan.npy', raw)
+                roll.frames.append({'number': n, 'crop': dict(INNER), 'correction': dict(develop.AUTO),
+                                    'film_base': {'measured': list(BASE), 'from': None, 'flat': flat.stamp()}})
+            for frame in roll.frames[:3]:
+                frame['neutral'] = [.5, .5]
+            self.assertIsNone(frames.gain(roll))                 # three grey points are too few
+            self.assertFalse(frames.remember_gain(roll))
+            for frame in roll.frames[3:]:
+                frame['neutral'] = [.5, .5]
+            np.testing.assert_allclose(frames.gain(roll), 1 / film, rtol=.02)
+            self.assertTrue(frames.remember_gain(roll))
+            self.assertFalse(frames.remember_gain(roll))         # kept already
+            later = Roll.create({'name': 'S', 'film_type': 'colour_negative', 'film_stock': 'neu 400'}, root=Path(d))
+            np.testing.assert_allclose(frames.gain(later), 1 / film, rtol=.02)  # the next roll of the stock has it
+            other = Roll.create({'name': 'T', 'film_type': 'colour_negative', 'film_stock': 'Kodak Portra 800'}, root=Path(d))
+            self.assertEqual(frames.gain(other), develop.FILM_GAINS['portra800'])
 
     def test_colours_from_another_frame_with_own_brightness(self):
         with tempfile.TemporaryDirectory() as d:

@@ -115,7 +115,7 @@ A look that develops colour negatives from the film maker's published curves and
 _Avoid_: Spectral look, emulation
 
 **Film profile** (Filmprofil):
-What a film stock always does differently from other stocks, known in advance: its colour layers' contrast. Film base and cast are not part of it; they are measured on every roll.
+What a film stock always does differently from other stocks: its colour layers' contrast. Built in for some stocks, or learned from a roll's grey points and kept for later rolls of that stock. Film base and cast are not part of it; they are measured on every roll.
 _Avoid_: Film preset, LUT
 
 **Scene** (Szene):

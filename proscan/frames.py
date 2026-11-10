@@ -1,8 +1,13 @@
 """What developing a frame needs, shared by the screen and the exports so both show the same image."""
 import numpy as np
 
+from pathlib import Path
+import json
+
 from . import capture, develop, filmdata, flat
-from .files import save_npy
+from .files import save_json, save_npy
+
+PROFILES = Path.home() / '.config' / 'proscan' / 'filmprofile.json'  # learned film profiles: {film stock: [r, g, b]}
 
 SHARPEN_SIGMA = 1.  # pixels at the raw scan's 3600 dpi
 NEUTRAL_SPOT = .006  # half the side of the patch measured around a neutral spot, of the scan's longer side
@@ -58,9 +63,58 @@ def levels(roll, n, image=None):
     return frame['levels']
 
 
+def _patch(roll, n, image):
+    """The scan around frame n's grey point."""
+    h, w = image.shape[:2]
+    x, y, r = int(roll.frames[n - 1]['neutral'][0] * w), int(roll.frames[n - 1]['neutral'][1] * h), max(2, round(NEUTRAL_SPOT * max(h, w)))
+    return image[max(0, y - r):y + r + 1, max(0, x - r):x + r + 1]
+
+
+def grey_stops(roll, n):
+    """Stops of frame n's grey point without a film profile, for learning one; measured once and kept."""
+    frame, base = roll.frames[n - 1], film_base(roll, n)[0]
+    key = [frame['neutral'], [float(v) for v in base], flat.stamp()]
+    if frame.get('grey_stops', {}).get('of') != key:
+        stops = develop._stops(_patch(roll, n, view(roll, n)), 'colour_negative', base)
+        frame['grey_stops'] = {'stops': [float(v) for v in np.median(stops.reshape(-1, 3), 0)], 'of': key}
+    return frame['grey_stops']['stops']
+
+
+def learned_gain(roll):
+    """The film profile learned from the roll's own grey points (see develop.fit_gain), or None."""
+    return develop.fit_gain([grey_stops(roll, f['number']) for f in roll.frames if f.get('neutral')])
+
+
+def _stock(roll):
+    return ''.join(ch for ch in roll.details.get('film_stock', '').lower() if ch.isalnum())
+
+
+def _profiles():
+    try:
+        data = json.loads(PROFILES.read_text())
+        return {k: tuple(float(x) for x in v) for k, v in data.items() if len(v) == 3}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {}
+
+
+def remember_gain(roll):
+    """Keep the roll's learned film profile for later rolls of its film stock; True if it is new or changed."""
+    learned = learned_gain(roll) if roll.details['film_type'] == 'colour_negative' and _stock(roll) else None
+    if learned is None or _profiles().get(_stock(roll)) == learned:
+        return False
+    PROFILES.parent.mkdir(parents=True, exist_ok=True)
+    save_json(PROFILES, {**_profiles(), _stock(roll): learned})
+    return True
+
+
 def gain(roll):
-    """The roll's film stock channel contrast (see develop.FILM_GAINS), or None."""
-    return develop.film_gain(roll.details.get('film_stock')) if roll.details['film_type'] == 'colour_negative' else None
+    """The roll's film profile (channel contrast, see develop.FILM_GAINS), or None.
+
+    Learned from the roll's own grey points first, then from an earlier roll of the same film stock, then built in.
+    """
+    if roll.details['film_type'] != 'colour_negative':
+        return None
+    return learned_gain(roll) or _profiles().get(_stock(roll)) or develop.film_gain(roll.details.get('film_stock'))
 
 
 def film_colour(roll, n):
@@ -118,9 +172,7 @@ def _own(roll, n, base, image=None):
     p = develop.analyse(cropped, film_type, base, roll.settings['look'], scene, roll_balance(roll), gain(roll),
                         roll.details.get('film_stock'))
     if frame.get('neutral') and film_type != 'bw_negative':
-        h, w = image.shape[:2]
-        x, y, r = int(frame['neutral'][0] * w), int(frame['neutral'][1] * h), max(2, round(NEUTRAL_SPOT * max(h, w)))
-        p = develop.neutralise(p, image[max(0, y - r):y + r + 1, max(0, x - r):x + r + 1], film_type, base)
+        p = develop.neutralise(p, _patch(roll, n, image), film_type, base)
     return p
 
 

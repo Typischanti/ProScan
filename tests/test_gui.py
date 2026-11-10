@@ -54,7 +54,7 @@ class GuiFlowTests(unittest.TestCase):
         root = Path(self.tmp.name)
         self.fake = FakeScanner(film(), dust=[(20, 30), (60, 90), (100, 40), (40, 130)])
         for patch in (mock.patch.object(rolls, 'ROOT', root / 'rolls'), mock.patch.object(i18n, 'SETTINGS', root / 's.json'),
-                      mock.patch.object(presets, 'OWN', root / 'presets.json'),
+                      mock.patch.object(presets, 'OWN', root / 'presets.json'), mock.patch.object(frames, 'PROFILES', root / 'filmprofile.json'),
                       mock.patch.object(flat, 'PATH', root / 'licht.npy'),
                       mock.patch.object(i18n, 'language', 'de'),
                       mock.patch.object(scanner, 'find_device', lambda: 'pieusb:test'),
