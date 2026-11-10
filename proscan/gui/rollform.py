@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout,
                                QLineEdit, QPlainTextEdit, QPushButton, QRadioButton, QVBoxLayout, QWidget)
 
+from .. import frames
 from .. import roll as rolls
 from . import theme as t
 from .i18n import tr
@@ -144,6 +145,16 @@ class RollForm(QWidget):
         self.look.button(rolls.LOOKS.index(settings['look'])).setChecked(True)
         looks.addStretch()
         right.addLayout(field(tr('look'), self._wrap(looks)))
+        if mode == 'settings':
+            # Which film profile develops the roll, and a way out of a learned one that went wrong.
+            row = QHBoxLayout()
+            self.profile = label('', 13, '#c8c8c8')
+            self.forget = QPushButton(tr('profile_forget'))
+            self.forget.clicked.connect(self.forget_profile)
+            row.addWidget(self.profile, 1)
+            row.addWidget(self.forget)
+            right.addLayout(field(tr('film_profile'), self._wrap(row)))
+            self.update_profile()
         self.multi = QCheckBox(tr('multi'))
         self.multi.setChecked(settings['multi_exposure'])
         right.addWidget(self.multi)
@@ -213,6 +224,18 @@ class RollForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         widget.setLayout(layout)
         return widget
+
+    def update_profile(self):
+        kind, gain = frames.profile(self.roll)
+        text = tr('profile_' + {'learned': 'learned_roll'}.get(kind, kind or 'none'), n=sum(len(frames.greys(f)) for f in self.roll.frames))
+        if gain:
+            text += '  ·  ' + '  '.join(f'{c} ×{v:.2f}' for c, v in zip('RGB', gain))
+        self.profile.setText(text)
+        self.forget.setVisible(frames.kept_gain(self.roll) is not None)
+
+    def forget_profile(self):
+        frames.forget_gain(self.roll)
+        self.update_profile()
 
     def pick_stock(self, name):
         if name in rolls.FILM_STOCKS:

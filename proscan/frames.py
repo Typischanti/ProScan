@@ -63,26 +63,32 @@ def levels(roll, n, image=None):
     return frame['levels']
 
 
-def _patch(roll, n, image):
-    """The scan around frame n's grey point."""
+def greys(frame):
+    """The frame's grey points [[x, y], ...] on the scan (fractions); a frame from before there were several has one."""
+    points = frame.get('neutral') or []
+    return points if not points or isinstance(points[0], list) else [points]
+
+
+def _patches(frame, image):
+    """The scan around each of the frame's grey points."""
     h, w = image.shape[:2]
-    x, y, r = int(roll.frames[n - 1]['neutral'][0] * w), int(roll.frames[n - 1]['neutral'][1] * h), max(2, round(NEUTRAL_SPOT * max(h, w)))
-    return image[max(0, y - r):y + r + 1, max(0, x - r):x + r + 1]
+    r = max(2, round(NEUTRAL_SPOT * max(h, w)))
+    return [image[max(0, int(y * h) - r):int(y * h) + r + 1, max(0, int(x * w) - r):int(x * w) + r + 1] for x, y in greys(frame)]
 
 
 def grey_stops(roll, n):
-    """Stops of frame n's grey point without a film profile, for learning one; measured once and kept."""
+    """Stops of frame n's grey points without a film profile, for learning one; measured once and kept."""
     frame, base = roll.frames[n - 1], film_base(roll, n)[0]
-    key = [frame['neutral'], [float(v) for v in base], flat.stamp()]
+    key = [greys(frame), [float(v) for v in base], flat.stamp()]
     if frame.get('grey_stops', {}).get('of') != key:
-        stops = develop._stops(_patch(roll, n, view(roll, n)), 'colour_negative', base)
-        frame['grey_stops'] = {'stops': [float(v) for v in np.median(stops.reshape(-1, 3), 0)], 'of': key}
+        stops = [np.median(develop._stops(p, 'colour_negative', base).reshape(-1, 3), 0) for p in _patches(frame, view(roll, n))]
+        frame['grey_stops'] = {'stops': [[float(v) for v in s] for s in stops], 'of': key}
     return frame['grey_stops']['stops']
 
 
 def learned_gain(roll):
     """The film profile learned from the roll's own grey points (see develop.fit_gain), or None."""
-    return develop.fit_gain([grey_stops(roll, f['number']) for f in roll.frames if f.get('neutral')])
+    return develop.fit_gain([s for f in roll.frames if greys(f) for s in grey_stops(roll, f['number'])])
 
 
 def _stock(roll):
@@ -95,6 +101,27 @@ def _profiles():
         return {k: tuple(float(x) for x in v) for k, v in data.items() if len(v) == 3}
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
+
+
+def kept_gain(roll):
+    """The film profile kept for the roll's film stock, or None."""
+    return _profiles().get(_stock(roll))
+
+
+def forget_gain(roll):
+    """Forget the film profile kept for the roll's film stock."""
+    if _stock(roll) in _profiles():
+        save_json(PROFILES, {k: v for k, v in _profiles().items() if k != _stock(roll)})
+
+
+def profile(roll):
+    """(kind, channel contrast) of the roll's film profile: 'learned' from its own grey points, 'kept' from an
+    earlier roll of the film stock, 'builtin', or (None, None)."""
+    if roll.details['film_type'] != 'colour_negative':
+        return None, None
+    options = (('learned', learned_gain(roll)), ('kept', kept_gain(roll)),
+               ('builtin', develop.film_gain(roll.details.get('film_stock'))))
+    return next(((kind, gain) for kind, gain in options if gain), (None, None))
 
 
 def remember_gain(roll):
@@ -112,9 +139,7 @@ def gain(roll):
 
     Learned from the roll's own grey points first, then from an earlier roll of the same film stock, then built in.
     """
-    if roll.details['film_type'] != 'colour_negative':
-        return None
-    return learned_gain(roll) or _profiles().get(_stock(roll)) or develop.film_gain(roll.details.get('film_stock'))
+    return profile(roll)[1]
 
 
 def film_colour(roll, n):
@@ -163,7 +188,7 @@ def params(roll, n, base, image=None, colour_from=None):
 
 
 def _own(roll, n, base, image=None):
-    """Frame n's own auto correction, with its neutral spot (key N) if one is picked."""
+    """Frame n's own auto correction, with its grey points (key N) if any are picked."""
     frame = roll.frames[n - 1]
     image = view(roll, n) if image is None else image
     cropped = develop.apply_crop(image, frame['crop'], turn=False)
@@ -171,8 +196,8 @@ def _own(roll, n, base, image=None):
     film_type = roll.details['film_type']
     p = develop.analyse(cropped, film_type, base, roll.settings['look'], scene, roll_balance(roll), gain(roll),
                         roll.details.get('film_stock'))
-    if frame.get('neutral') and film_type != 'bw_negative':
-        p = develop.neutralise(p, _patch(roll, n, image), film_type, base)
+    if greys(frame) and film_type != 'bw_negative':
+        p = develop.neutralise(p, _patches(frame, image), film_type, base)
     return p
 
 

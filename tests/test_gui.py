@@ -355,8 +355,21 @@ class GuiFlowTests(unittest.TestCase):
         self.key(Qt.Key.Key_N, 'n')
         self.assertEqual(w.view.mode, 'pick')
         w.view.picked.emit(.5, .5)
-        self.assertEqual(len(w.frame(1)['neutral']), 2)
+        self.assertEqual(len(w.frame(1)['neutral']), 1)
         self.assertFalse(w.neutral_picking)
+        self.key(Qt.Key.Key_N, 'n')
+        self.assertEqual(len(w.view.marks), 1)        # the grey point shows while picking
+        np.testing.assert_allclose(w.view.marks[0], (.5, .5), atol=.01)
+        w.view.picked.emit(.2, .3)                    # a second one on the same frame
+        self.assertEqual(len(w.frame(1)['neutral']), 2)
+        self.assertIn('2', w.panel.state['status'])
+        self.key(Qt.Key.Key_N, 'n')
+        w.view.picked.emit(.51, .49)                  # a click on a mark takes it away
+        np.testing.assert_allclose(w.grey_marks(), [(.2, .3)], atol=.01)
+        form = RollForm('settings', roll=w.roll)
+        self.addCleanup(form.deleteLater)
+        self.assertEqual(form.profile.text(), i18n.tr('profile_none'))
+        self.assertTrue(form.forget.isHidden())
         w.select(3)
         self.key(Qt.Key.Key_L, 'l')
         self.assertEqual(w.colour_choosing, 2)

@@ -146,11 +146,12 @@ class ImageView(QWidget):
         self.target = QRectF()  # where the image was drawn, for the mouse in crop mode
         self.drag = None        # (what, crop at press, press position) while dragging the crop
         self.loupe = None       # the frame at full resolution while the loupe is on (Z held)
+        self.marks = ()         # the frame's grey points while picking one (N), as fractions of it
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
-    def show(self, image, mode='normal', crop=None, info=('', ''), preview=('', '', ''), loupe=None):
-        self.image, self.mode, self.crop, self.info, self.loupe = image, mode, crop, info, loupe
+    def show(self, image, mode='normal', crop=None, info=('', ''), preview=('', '', ''), loupe=None, marks=()):
+        self.image, self.mode, self.crop, self.info, self.loupe, self.marks = image, mode, crop, info, loupe, marks
         self.preview_title, self.preview_yes, self.preview_no = preview
         self.update()
 
@@ -181,6 +182,14 @@ class ImageView(QWidget):
             self._paint_preview(p, target)
         elif self.mode == 'crop' and self.crop:
             self._paint_crop(p, target)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        for x, y in self.marks:
+            if 0 <= x <= 1 and 0 <= y <= 1:  # not cropped away
+                centre = QPointF(target.left() + x * target.width(), target.top() + y * target.height())
+                for colour, width in (('#000000', 4), ('#ffffff', 2)):  # shows on light and dark
+                    p.setPen(QPen(QColor(colour), width))
+                    p.drawEllipse(centre, 9, 9)
 
     def _paint_loupe(self, p, target, area):
         """The full-resolution frame 1:1, around the point under the mouse (the centre when it is elsewhere)."""

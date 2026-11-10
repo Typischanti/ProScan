@@ -105,7 +105,7 @@ A frame taking another frame's automatic correction instead of its own, so a seq
 _Avoid_: Density lock, sync
 
 **Grey point** (Graupunkt):
-A spot the user marks on a grey or white surface of a frame; the frame's colours are balanced so that it prints neutral. The look's own character (such as warm shadows) stays.
+A spot the user marks on a grey or white surface of a frame; the frame's colours are balanced so that its grey points print neutral on average. The look's own character (such as warm shadows) stays.
 
 **Colours from a frame** (Farben von Bild):
 A frame taking only the colour balance of another frame shot in the same light, with its own brightness. Unlike the auto lock, which takes the whole auto correction.

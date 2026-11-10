@@ -116,7 +116,9 @@ class ColourTests(unittest.TestCase):
             crop = {**INNER, 'angle': 2., 'turn': turn}
             shown = develop.apply_crop(spot, crop)
             y, x = np.unravel_index(np.argmax(shown), shown.shape)
-            sx, sy = develop.scan_point(crop, shape, (x + .5) / shown.shape[1], (y + .5) / shown.shape[0])
+            at = (x + .5) / shown.shape[1], (y + .5) / shown.shape[0]
+            sx, sy = develop.scan_point(crop, shape, *at)
+            np.testing.assert_allclose(develop.frame_point(crop, shape, sx, sy), at, atol=1e-6)  # and back, for its mark
             self.assertAlmostEqual(sx * 300, 182, delta=3, msg=turn)
             self.assertAlmostEqual(sy * 200, 72, delta=3, msg=turn)
 
@@ -155,12 +157,29 @@ class ColourTests(unittest.TestCase):
             for frame in roll.frames[3:]:
                 frame['neutral'] = [.5, .5]
             np.testing.assert_allclose(frames.gain(roll), 1 / film, rtol=.02)
+            self.assertEqual(frames.profile(roll)[0], 'learned')
             self.assertTrue(frames.remember_gain(roll))
             self.assertFalse(frames.remember_gain(roll))         # kept already
             later = Roll.create({'name': 'S', 'film_type': 'colour_negative', 'film_stock': 'neu 400'}, root=Path(d))
             np.testing.assert_allclose(frames.gain(later), 1 / film, rtol=.02)  # the next roll of the stock has it
+            self.assertEqual(frames.profile(later)[0], 'kept')
+            frames.forget_gain(later)
+            self.assertEqual(frames.profile(later), (None, None))
+            frames.remember_gain(roll)
             other = Roll.create({'name': 'T', 'film_type': 'colour_negative', 'film_stock': 'Kodak Portra 800'}, root=Path(d))
-            self.assertEqual(frames.gain(other), develop.FILM_GAINS['portra800'])
+            self.assertEqual(frames.profile(other), ('builtin', develop.FILM_GAINS['portra800']))
+
+    def test_several_grey_points_on_one_frame(self):
+        with tempfile.TemporaryDirectory() as d:
+            roll = self.roll(d, [scene() * [1., .8, .6]])
+            roll.frames[0]['neutral'] = [.6, .75]              # as kept before a frame could have several
+            one = frames.params(roll, 1, frames.film_base(roll, 1)[0])
+            roll.frames[0]['neutral'] = [[.6, .75]]
+            self.assertEqual(frames.params(roll, 1, frames.film_base(roll, 1)[0]), one)
+            roll.frames[0]['neutral'] = [[.6, .75], [.3, .75]]  # a lighter and a darker grey of the ramp
+            self.assertEqual(len(frames.grey_stops(roll, 1)), 2)
+            self.assertLess(self.grey(roll, 1, .6, .75), 1.08)
+            self.assertLess(self.grey(roll, 1, .45, .75), 1.08)
 
     def test_colours_from_another_frame_with_own_brightness(self):
         with tempfile.TemporaryDirectory() as d:

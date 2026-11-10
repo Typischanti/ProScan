@@ -282,6 +282,7 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle(tr('roll_settings'))
         dialog.resize(1180, 800)
         form = RollForm('settings', roll=self.roll)
+        gain = frames.gain(self.roll)  # the film profile: another film stock or a forgotten profile changes it
         form.cancelled.connect(dialog.accept)
         QVBoxLayout(dialog).addWidget(form)
         dialog.layout().setContentsMargins(0, 0, 0, 0)
@@ -294,6 +295,9 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 details['film_type'] = self.roll.details['film_type']
         self.apply_settings(details, settings)
+        if frames.gain(self.roll) != gain:
+            for frame in self.roll.frames:
+                self.export_later(frame['number'])
 
     def apply_settings(self, details, settings):
         """Store edited roll settings; new export settings (a new folder too) re-export every frame there."""
@@ -577,7 +581,7 @@ class MainWindow(QMainWindow):
             for frame in self.roll.frames:
                 self.export_later(frame['number'])
             if frames.remember_gain(self.roll):
-                self.say(tr('profile_learned', n=sum(1 for f in self.roll.frames if f.get('neutral')),
+                self.say(tr('profile_learned', n=sum(len(frames.greys(f)) for f in self.roll.frames),
                             stock=self.roll.details.get('film_stock', '')))
 
     def clear_notice(self):
@@ -781,7 +785,8 @@ class MainWindow(QMainWindow):
     # --- colour balance: a neutral spot (N) or another frame's colours (L) -------------------------
 
     def start_neutral(self, on):
-        """N: the next click marks a grey or white surface, which then prints neutral; Shift+N: the automatic balance again."""
+        """N: the next click marks a grey or white surface (or takes its mark away again), which then prints neutral;
+        Shift+N: no grey points, the automatic balance again."""
         if not self.can_correct() or self.roll.details['film_type'] == 'bw_negative':
             return
         if on:
@@ -796,9 +801,18 @@ class MainWindow(QMainWindow):
         if not self.neutral_picking:
             return
         self.neutral_picking = False
-        # Its own neutral spot replaces colours taken from another frame.
-        self.change(self.sel, neutral=develop.scan_point(self.frame(self.sel)['crop'], self.raw(self.sel).shape, x, y),
-                    colour_from=None)
+        frame, shape = self.frame(self.sel), self.raw(self.sel).shape
+        points = frames.greys(frame)
+        on_mark = [p for p, (mx, my) in zip(points, self.grey_marks()) if abs(mx - x) < .03 and abs(my - y) < .03]
+        if on_mark:
+            return self.change(self.sel, neutral=[p for p in points if p is not on_mark[0]] or None)
+        # Its own grey points replace colours taken from another frame.
+        self.change(self.sel, neutral=[*points, develop.scan_point(frame['crop'], shape, x, y)], colour_from=None)
+
+    def grey_marks(self):
+        """The selected frame's grey points on the frame as shown (fractions)."""
+        frame = self.frame(self.sel)
+        return [develop.frame_point(frame['crop'], self.raw(self.sel).shape, *p) for p in frames.greys(frame)]
 
     def start_colour_choosing(self):
         if not self.can_correct() or self.roll.details['film_type'] == 'bw_negative' or len(self.roll.frames) < 2:
@@ -1124,7 +1138,7 @@ class MainWindow(QMainWindow):
                     right = tr('neutral_pick')
                 self.view.show(image, 'pick' if self.neutral_picking else 'normal',
                                info=(f'{tr("frame")} {self.sel} · {self.frame(self.sel).get('dpi', scanner.RAW_DPI)} dpi · {px}', right),
-                               loupe=loupe)
+                               loupe=loupe, marks=self.grey_marks() if self.neutral_picking else ())
             else:
                 self.view.show(None)
             self.stack.setCurrentWidget(self.view)
@@ -1164,8 +1178,9 @@ class MainWindow(QMainWindow):
             status += ' · ' + tr('auto_from', m=self.frame(self.sel)['auto_from'])
         elif not locked and self.frame(self.sel).get('colour_from'):
             status += ' · ' + tr('colours_like', m=self.frame(self.sel)['colour_from'])
-        elif not locked and self.frame(self.sel).get('neutral'):
-            status += ' · ' + tr('neutral_set')
+        elif not locked and frames.greys(self.frame(self.sel)):
+            count = len(frames.greys(self.frame(self.sel)))
+            status += ' · ' + (tr('neutral_set') if count == 1 else tr('neutral_many', n=count))
         picking = None
         if self.picking is not None and not locked:
             picking = {'items': self.preset_list(), 'selected': self.picking}

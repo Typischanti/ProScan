@@ -85,7 +85,7 @@ Other keys:
 | Hold **Z** | Loupe: the frame at full resolution, 1:1, around the mouse (as exported; ready after a few seconds) |
 | **Ctrl+U**, **U** | Copy a frame's automatic correction, apply it to another frame (for a sequence of one scene: they then print alike) |
 | **Shift+U** | The frame's own automatic correction again |
-| **N**, then a click | Grey point: the clicked grey or white surface prints neutral, the colours of the whole frame follow (**Shift+N** removes it) |
+| **N**, then a click | Grey point: the clicked grey or white surface prints neutral, the colours of the whole frame follow. A frame can have several (N again); while picking, rings show them, and a click on a ring removes it. **Shift+N** removes all |
 | **L** | Colours from another frame: **← →** choose, **Enter** apply, **Del** own colours, **Esc** cancel. Only the colour balance is taken; the brightness stays the frame's own |
 | **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
@@ -215,7 +215,9 @@ each file's metadata.
 - **Learned film profiles:** grey points (**N**) teach Pro Scan a film stock. From four grey points on a
   roll, on surfaces at least one and a half stops apart (a dark wall and a white shirt, say), it fits the
   stock's profile, uses it for the whole roll and keeps it in `~/.config/proscan/filmprofile.json` for
-  later rolls with the same film stock name. More grey points, from dark to white, make it more exact.
+  later rolls with the same film stock name. More grey points, from dark to white, make it more exact;
+  several can sit on one frame. The roll settings (Ctrl+,) show which film profile the roll uses and
+  can forget a learned one.
   The Film data look does not use film profiles.
 - **Histogram:** the panel shows the developed frame's red, green and blue tones, dark to
   light, above the keys.

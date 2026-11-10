@@ -113,6 +113,16 @@ def scan_point(crop, shape, x, y):
     return [float(np.clip(sx / w, 0, 1)), float(np.clip(sy / h, 0, 1))]
 
 
+def frame_point(crop, shape, sx, sy):
+    """The scan point (sx, sy) (fractions) on the cropped and turned frame (fractions; outside 0..1 when cropped away)."""
+    h, w = shape[:2]
+    px, py = cv2.getRotationMatrix2D((w / 2, h / 2), crop['angle'], 1) @ np.array([sx * w, sy * h, 1.])
+    x, y = (px / w - crop['x']) / crop['w'], (py / h - crop['y']) / crop['h']
+    for _ in range(crop.get('turn', 0) // 90):
+        x, y = 1 - y, x
+    return float(x), float(y)
+
+
 # --- film base -----------------------------------------------------------------------------------
 
 def measure_film_base(raw):
@@ -261,15 +271,15 @@ def analyse(raw, film_type, base, look, scene='standard', roll=None, gain=None, 
     return {**params, 'gain': list(gain)} if gain is not None else params
 
 
-def neutralise(params, patch, film_type, base):
-    """`params` with the colour balanced so that `patch` (a grey or white surface of the scan) prints neutral.
+def neutralise(params, patches, film_type, base):
+    """`params` with the colour balanced so that `patches` (grey or white surfaces of the scan) print neutral on average.
 
     The frame's brightness stays: only the channels' differences change.
     """
     if 'stock' in params:  # the look 'filmdata': the shift taken off each layer's log exposure
-        e = np.median(filmdata.exposure(patch, base, params['stock']).reshape(-1, 3), 0)
+        e = np.mean([np.median(filmdata.exposure(p, base, params['stock']).reshape(-1, 3), 0) for p in patches], 0)
         return {**params, 'shift': [float(v) for v in np.mean(params['shift']) + e - e.mean()]}
-    e = np.median(_stops(patch, film_type, base, params.get('gain')).reshape(-1, 3), 0)
+    e = np.mean([np.median(_stops(p, film_type, base, params.get('gain')).reshape(-1, 3), 0) for p in patches], 0)
     black, white = np.asarray(params['black']), np.asarray(params['white'])
     span = white - black
     black = e - np.mean((e - black) / span) * span  # the patch at the same height in all three channels
