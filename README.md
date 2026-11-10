@@ -41,7 +41,8 @@ folder, or from the app menu once you've added the menu entry.
    from the same screen.
 2. **Load a frame** into the scanner and press **Enter**. Pro Scan makes a quick
    600 dpi preview, only so you can check that the frame sits right.
-3. **Enter** scans it, **Esc** lets you load it again. A progress bar shows the
+3. After four seconds the scan starts by itself (**Enter** starts it at once); **Esc**
+   within that time lets you load the frame again. A progress bar shows the
    scan. With multi-exposure on, a frame is scanned twice.
 4. The frame appears developed and is **exported automatically**. Load the
    next one and repeat.
@@ -76,6 +77,7 @@ Other keys:
 | Key | Does |
 |---|---|
 | **← →** | Previous / next frame |
+| **Tab** | Next part of the correction in the panel: Tone, Colour, Frame. Each tab shows its keys and its tools as rows to click; pressing a key shows its tab |
 | **G** | 12-up grid of the roll |
 | **A** | Crop and straighten (see below) |
 | **T** / **Shift+T** | Turn 90° clockwise / counter-clockwise |
@@ -86,7 +88,7 @@ Other keys:
 | **Ctrl+U**, **U** | Copy a frame's automatic correction, apply it to another frame (for a sequence of one scene: they then print alike) |
 | **Shift+U** | The frame's own automatic correction again |
 | **N**, then a click | Grey point: the clicked grey or white surface prints neutral, the colours of the whole frame follow. A frame can have several (N again); while picking, rings show them, and a click on a ring removes it. **Shift+N** removes all |
-| **L** | Colours from another frame: **← →** choose, **Enter** apply, **Del** own colours, **Esc** cancel. Only the colour balance is taken; the brightness stays the frame's own |
+| **L** | Like another frame: **← →** choose, **Enter** takes its colours (the brightness stays the frame's own), **Shift+Enter** its colours and brightness (as **U** does), **Del** own colours, **Esc** cancel |
 | **W** | Clipping warning on/off: pure white shows red, pure black blue, with their share under the picture |
 | **Ctrl+S** | Save the frame's scene and keys as your own preset |
 | **R** | Rescan the frame (keeps its correction) |

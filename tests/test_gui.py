@@ -362,7 +362,8 @@ class GuiFlowTests(unittest.TestCase):
         np.testing.assert_allclose(w.view.marks[0], (.5, .5), atol=.01)
         w.view.picked.emit(.2, .3)                    # a second one on the same frame
         self.assertEqual(len(w.frame(1)['neutral']), 2)
-        self.assertIn('2', w.panel.state['status'])
+        w.show_tab('colour')
+        self.assertIn(('grey', i18n.tr('grey_point'), '2', 'N'), w.panel.state['actions'])
         self.key(Qt.Key.Key_N, 'n')
         w.view.picked.emit(.51, .49)                  # a click on a mark takes it away
         np.testing.assert_allclose(w.grey_marks(), [(.2, .3)], atol=.01)
@@ -389,6 +390,55 @@ class GuiFlowTests(unittest.TestCase):
         self.assertIsNone(w.frame(1).get('neutral'))
         self.key(Qt.Key.Key_Z, 'z', Qt.KeyboardModifier.ControlModifier)
         self.assertIsNotNone(w.frame(1).get('neutral'))  # undo brings it back
+
+    def test_panel_tabs_and_tool_rows(self):
+        w = self.w
+        w.create_roll({'name': 'Reiter', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        for _ in range(2):
+            self.scan_frame()
+        self.assertEqual(w.panel.state['tab'], 'tone')
+        self.key(Qt.Key.Key_7, '7')                              # a colour key shows the colour tab
+        self.assertEqual(w.panel.state['tab'], 'colour')
+        QApplication.sendEvent(w, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier, '\t'))
+        self.assertEqual(w.panel.state['tab'], 'frame')
+        w.grab()                                                 # paints the panel, so its rows can be clicked
+        click = lambda rects, ident: w.panel.mousePressEvent(QMouseEvent(
+            QEvent.Type.MouseButtonPress, next(r for r, i in rects if i == ident).center(), Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+        click(w.panel.action_rects, 'turn')
+        self.assertEqual(w.frame(2)['crop']['turn'], 90)
+        click(w.panel.tab_rects, 'colour')
+        w.grab()
+        click(w.panel.action_rects, 'tone:h')
+        self.assertEqual(w.tone, 'h')
+        click(w.panel.action_rects, 'grey')
+        self.assertTrue(w.neutral_picking)
+        self.key(Qt.Key.Key_Escape)
+        click(w.panel.action_rects, 'colour_from')               # the chooser: Enter colours, Shift+Enter brightness too
+        self.assertEqual(w.colour_choosing, 1)
+        self.key(Qt.Key.Key_Return, '', Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual((w.frame(2).get('auto_from'), w.frame(2).get('colour_from')), (1, None))
+        self.assertIn(('colour_from', i18n.tr('colours_of'), 'Bild 1', 'L'), w.panel.state['actions'])
+        self.key(Qt.Key.Key_L, 'l')
+        self.key(Qt.Key.Key_Return)
+        self.assertEqual((w.frame(2).get('auto_from'), w.frame(2).get('colour_from')), (None, 1))
+
+    def test_raw_scan_starts_by_itself_after_the_preview(self):
+        w = self.w
+        w.create_roll({'name': 'Zug', 'film_type': 'colour_negative'}, json.loads(json.dumps(rolls.DEFAULT_SETTINGS)))
+        self.key(Qt.Key.Key_Return)
+        self.wait(lambda: w.step == 'preview')
+        self.assertTrue(w.countdown_timer.isActive())
+        self.assertIn('4 s', w.header.step_text.text())
+        self.key(Qt.Key.Key_Escape)                 # stops it: the frame is not scanned
+        self.assertFalse(w.countdown_timer.isActive())
+        self.assertEqual((w.step, w.roll.frames), ('load', []))
+        self.key(Qt.Key.Key_Return)
+        self.wait(lambda: w.step == 'preview')
+        for _ in range(4):                          # the seconds pass
+            w.count_down()
+        self.wait(lambda: w.step == 'load')
+        self.assertEqual(len(w.roll.frames), 1)
 
     def test_hung_scanner_affects_only_that_frame(self):
         w = self.w

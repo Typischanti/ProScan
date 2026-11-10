@@ -384,8 +384,13 @@ def wrapped(text, size=14, color=t.TEXT):
     return widget
 
 
+TABS = ('tone', 'colour', 'frame')  # the parts of a correction the panel shows one at a time
+
+
 class CorrectionPanel(QWidget):
     reset_clicked = Signal()
+    tab_clicked = Signal(str)
+    action_clicked = Signal(str)  # a tool row of the tab, by its id
 
     def __init__(self):
         super().__init__()
@@ -393,15 +398,20 @@ class CorrectionPanel(QWidget):
         self.setStyleSheet(f'background: {t.PANEL};')
         self.state = None
         self.reset_rect = QRectF()
+        self.tab_rects, self.action_rects = [], []  # (rect, id) of what can be clicked, as last painted
 
     def update_state(self, state):
-        """state: frame, status, corrected, values, locked, bw, crop, export (glyph, color, text)."""
+        """state: frame, status, corrected, values, locked, bw, tab, actions [(id, name, value, key)], export (glyph, color, text)."""
         self.state = state
         self.update()
 
     def mousePressEvent(self, event):
         if self.state and self.state['corrected'] and self.reset_rect.contains(event.position()):
             self.reset_clicked.emit()
+        for rects, signal in ((self.tab_rects, self.tab_clicked), (self.action_rects, self.action_clicked)):
+            for rect, ident in rects:
+                if self.state and not self.state.get('presets') and rect.contains(event.position()):
+                    return signal.emit(ident)
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -439,22 +449,23 @@ class CorrectionPanel(QWidget):
         p.drawLine(0, 62, w, 62)
         if s.get('presets'):
             return self._paint_presets(p, w, s['presets'])
-        rows = [('D', tr('density'), 'Num + / −', False), ('H', tr('brightness'), 'H / Shift+H', False), ('C', tr('cyan'), 'Num 7 / 4', s['bw']),
-                ('M', tr('magenta'), 'Num 8 / 5', s['bw']), ('Y', tr('yellow'), 'Num 9 / 6', s['bw']),
-                ('F', tr('saturation'), 'F / Shift+F', s['bw']), ('V', tr('vibrance'), 'V / Shift+V', s['bw']),
-                ('G', tr('gradation'), 'Num 3 / 1', False), ('S', tr('sharpness'), 'Num × / ÷', False)]
+        rows = {'tone': [('D', tr('density'), 'Num + / −', False), ('H', tr('brightness'), 'H / Shift+H', False),
+                         ('G', tr('gradation'), 'Num 3 / 1', False)],
+                'colour': [('C', tr('cyan'), 'Num 7 / 4', s['bw']), ('M', tr('magenta'), 'Num 8 / 5', s['bw']),
+                           ('Y', tr('yellow'), 'Num 9 / 6', s['bw']), ('F', tr('saturation'), 'F / Shift+F', s['bw']),
+                           ('V', tr('vibrance'), 'V / Shift+V', s['bw'])],
+                'frame': [('S', tr('sharpness'), 'Num × / ÷', False)]}[s['tab']]
         y = 72
         if s.get('hist') is not None:
             self._paint_histogram(p, w, y, s['hist'])
             y += 76
+        self.action_rects = []
+        y = self._paint_tabs(p, w, y, s['tab'])
         top = y
         tone = s.get('tone')
+        if s['tab'] == 'colour':
+            y = self._paint_tones(p, w, y, tone, s)
         for key, name, keys, disabled in rows:
-            if key == 'C':
-                y = self._paint_tones(p, w, y, tone, s)
-            if key == 'G':
-                p.setPen(QColor(t.LINE))
-                p.drawLine(18, y, w - 18, y)
             if key in 'CMY' and tone:
                 name, key = f'{name} · {tr("tones")[tone]}', key + tone
             p.setOpacity(.35 if disabled else (.3 if s['locked'] else 1))
@@ -488,14 +499,14 @@ class CorrectionPanel(QWidget):
             p.setOpacity(1)
             y += 58
         if s['locked'] and s.get('locked_note', True):
-            box = QRectF(18, top + 58 * 2.5, w - 36, 44)
+            box = QRectF(18, top + 58, w - 36, 44)
             p.fillRect(box, QColor('#141414'))
             p.setPen(QColor('#3a3a3a'))
             p.drawRect(box)
             p.setFont(font(13))
             p.setPen(QColor('#c8c8c8'))
             p.drawText(box, Qt.AlignmentFlag.AlignCenter, tr('panel_locked'))
-        if s['bw']:
+        if s['bw'] and s['tab'] == 'colour':
             p.setFont(font(12))
             p.setPen(QColor(t.DIM))
             p.drawText(18, y + 12, tr('bw_note'))
@@ -503,22 +514,9 @@ class CorrectionPanel(QWidget):
         y += 8
         if s.get('film_base'):
             y = self._paint_film_base(p, w, y, s['film_base'])
-        p.setPen(QColor(t.LINE))
-        p.drawLine(0, y, w, y)
-        p.setFont(font(13))
-        p.setPen(QColor('#a3a3a3'))
-        p.drawText(18, y + 24, tr('crop'))
-        p.setFont(font(12))
-        p.setPen(QColor('#c8c8c8'))
-        p.drawText(QRectF(18, y + 10, w - 60, 20), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, tr('change'))
-        p.setFont(font(11, mono=True))
-        p.setPen(QColor('#4a4a4a'))
-        p.drawRect(QRectF(w - 36, y + 11, 18, 18))
-        p.setPen(QColor(t.TEXT))
-        p.drawText(QRectF(w - 36, y + 11, 18, 18), Qt.AlignmentFlag.AlignCenter, 'A')
-        p.setFont(font(15, mono=True))
-        p.drawText(18, y + 52, s['crop'])
-        y += 66
+        else:
+            for ident, name, value, key in s['actions']:
+                y = self._paint_action(p, w, y, ident, name, value, key, s['locked'])
         p.setPen(QColor(t.LINE))
         p.drawLine(0, y, w, y)
         glyph, color, text = s['export']
@@ -531,6 +529,44 @@ class CorrectionPanel(QWidget):
         # The pad only recalls the keys (F1 shows them too): left out when it would cover the panel.
         if s.get('pad', True) and y + 40 <= self.height() - 14 - 5 * 33 - 28 - 12:
             self._paint_pad(p, w, s['bw'])
+
+    def _paint_tabs(self, p, w, y, active):
+        """The parts of a correction, one at a time: tone, colour, frame (click or Tab)."""
+        self.tab_rects = []
+        cell = (w - 36) / len(TABS)
+        for i, tab in enumerate(TABS):
+            r = QRectF(18 + i * cell, y, cell, 30)
+            self.tab_rects.append((r, tab))
+            if tab == active:
+                p.fillRect(r, QColor('#2e2e2e'))
+                p.fillRect(QRectF(r.left(), r.bottom() - 2, r.width(), 2), QColor('#e6e6e6'))
+            p.setFont(font(13, QFont.Weight.DemiBold if tab == active else QFont.Weight.Normal))
+            p.setPen(QColor('#f0f0f0' if tab == active else '#8a8a8a'))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, tr('tab_' + tab))
+        p.setPen(QColor(t.LINE))
+        p.drawLine(18, int(y + 30), w - 18, int(y + 30))
+        return y + 38
+
+    def _paint_action(self, p, w, y, ident, name, value, key, locked):
+        """A tool of the tab as a row to click: its name, what it is set to, its key."""
+        row = QRectF(0, y, w, 36)
+        self.action_rects.append((row, ident))
+        p.setOpacity(.3 if locked else 1)
+        p.setPen(QColor(t.LINE))
+        p.drawLine(0, y, w, y)
+        p.setFont(font(13))
+        p.setPen(QColor('#c8c8c8'))
+        p.drawText(QRectF(18, y, w - 36, 36), Qt.AlignmentFlag.AlignVCenter, name)
+        p.setFont(font(12, mono=True))
+        p.setPen(QColor(t.TEXT if value else t.DIM))
+        p.drawText(QRectF(18, y, w - 66, 36), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, value or '—')
+        p.setFont(font(11, mono=True))
+        p.setPen(QColor('#4a4a4a'))
+        p.drawRect(QRectF(w - 36, y + 9, 18, 18))
+        p.setPen(QColor(t.TEXT))
+        p.drawText(QRectF(w - 36, y + 9, 18, 18), Qt.AlignmentFlag.AlignCenter, key)
+        p.setOpacity(1)
+        return y + 36
 
     def _paint_histogram(self, p, w, y, hist):
         """Red, green and blue tones of the developed frame, dark to light, drawn over each other."""
@@ -588,6 +624,7 @@ class CorrectionPanel(QWidget):
         cell = (w - 36 - 50) / 4
         for i, z in enumerate((None, *develop.TONES)):
             r = QRectF(18 + i * cell, y + 2, cell - 4, 22)
+            self.action_rects.append((r, f'tone:{z or ""}'))
             active = z == tone
             if active:
                 p.fillRect(r, QColor('#2e2e2e'))

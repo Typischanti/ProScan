@@ -18,13 +18,14 @@ from . import i18n
 from . import theme as t
 from .i18n import tr
 from .rollform import RollForm
-from .widgets import (Card, CorrectionPanel, Footer, GridView, Header, ImageView, Legend, Strip, fmt, label,
+from .widgets import (TABS, Card, CorrectionPanel, Footer, GridView, Header, ImageView, Legend, Strip, fmt, label,
                       qimage, scoped, wrapped)
 
 # Number pad (and main-row) keys -> correction key and step; see docs/design legend.
 PAD = {'+': ('D', 1), '-': ('D', -1), '7': ('C', 1), '4': ('C', -1), '8': ('M', 1), '5': ('M', -1),
        '9': ('Y', 1), '6': ('Y', -1), '3': ('G', 1), '1': ('G', -1), '*': ('S', 1), '/': ('S', -1)}
 BUSY = ('preview_run', 'raw', 'calibrate')
+AUTO_SCAN = 4  # seconds a preview shows before its raw scan starts by itself
 
 
 def histogram(image):
@@ -103,6 +104,7 @@ class MainWindow(QMainWindow):
         self.copied = None       # (frame number, correction) from Ctrl+C
         self.auto_copied = None  # frame whose automatic correction Ctrl+U copied
         self.tone = None         # tone range the colour keys act on (Num 2), None = whole frame
+        self.tab = 'tone'        # the part of the correction the panel shows (see widgets.TABS)
         self.picking = None      # index in the preset list while it is open (P)
         self.comparing = False   # Space held: the frame as the plain automatic correction shows it
         self.zooming = False     # Z held: the loupe, the frame at full resolution 1:1
@@ -116,6 +118,10 @@ class MainWindow(QMainWindow):
         self.notice_timer = QTimer(self)
         self.notice_timer.setSingleShot(True)
         self.notice_timer.timeout.connect(self.clear_notice)
+        self.countdown = 0       # seconds until the raw scan starts by itself after a preview
+        self.countdown_timer = QTimer(self)
+        self.countdown_timer.setInterval(1000)
+        self.countdown_timer.timeout.connect(self.count_down)
         self.export_timer = QTimer(self)
         self.export_timer.setSingleShot(True)
         self.export_timer.timeout.connect(self.flush_exports)
@@ -147,6 +153,8 @@ class MainWindow(QMainWindow):
         body.addWidget(self.stack, 1)
         self.panel = CorrectionPanel()
         self.panel.reset_clicked.connect(self.reset_frame)
+        self.panel.tab_clicked.connect(self.show_tab)
+        self.panel.action_clicked.connect(self.panel_action)
         body.addWidget(self.panel)
         layout.addLayout(body, 1)
         self.strip = Strip()
@@ -342,9 +350,22 @@ class MainWindow(QMainWindow):
         image = (np.clip(np.asarray(preview[..., :3], np.float32) / 65535, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)
         self.preview = qimage(image)
         self.step = 'preview'
+        # One Enter per frame: the raw scan starts by itself unless Esc stops it to reload the frame.
+        self.countdown = AUTO_SCAN
+        self.countdown_timer.start()
         self.refresh()
 
+    def count_down(self):
+        self.countdown -= 1
+        if self.step != 'preview':
+            self.countdown_timer.stop()
+        elif self.countdown <= 0:
+            self.confirm_preview()
+        else:
+            self.refresh()
+
     def confirm_preview(self):
+        self.countdown_timer.stop()
         self.step = 'raw'
         self.scanner_state = 'busy'
         roll, n, device = self.roll, self.target, self.device
@@ -421,6 +442,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def skip(self):
+        self.countdown_timer.stop()
         self.step = 'load'
         self.rescanning = False
         self.preview = None
@@ -617,6 +639,7 @@ class MainWindow(QMainWindow):
     def key_step(self, key, delta):
         if not self.can_correct() or (key in 'CMYFV' and self.roll.details['film_type'] == 'bw_negative'):
             return
+        self.tab = 'frame' if key == 'S' else 'tone' if key in 'DHG' else 'colour'  # the panel shows what the key changes
         correction = dict(self.frame(self.sel)['correction'])
         if key in 'CMY' and self.tone:
             key += self.tone
@@ -631,7 +654,43 @@ class MainWindow(QMainWindow):
         if self.roll.details['film_type'] != 'bw_negative':
             order = (None, *develop.TONES)
             self.tone = order[(order.index(self.tone) + 1) % len(order)]
+            self.tab = 'colour'
             self.render_panel()
+
+    def show_tab(self, tab=None):
+        """A click on a tab of the panel, or Tab for the next one."""
+        self.tab = tab or TABS[(TABS.index(self.tab) + 1) % len(TABS)]
+        self.render_panel()
+
+    def panel_action(self, ident):
+        """A click on a tool row of the panel: what its key does."""
+        if ident.startswith('tone:'):
+            if self.roll.details['film_type'] != 'bw_negative':
+                self.tone = ident[5:] or None
+                self.render_panel()
+            return
+        {'presets': self.start_presets, 'grey': lambda: self.start_neutral(True), 'colour_from': self.start_colour_choosing,
+         'crop': self.start_crop, 'turn': lambda: self.turn(90), 'film_base': self.start_choosing, 'rescan': self.rescan}[ident]()
+
+    def actions(self):
+        """The tool rows of the panel's tab: (id, name, what it is set to, key)."""
+        frame = self.frame(self.sel) if self.sel and self.can_correct() else {}
+        if self.tab == 'tone':
+            return [('presets', tr('presets'), '', 'P')]
+        bw = self.roll.details['film_type'] == 'bw_negative'
+        if self.tab == 'colour':
+            if bw:
+                return []
+            count = len(frames.greys(frame))
+            like = frame.get('auto_from') or frame.get('colour_from')
+            return [('grey', tr('grey_point'), str(count) if count else '', 'N'),
+                    ('colour_from', tr('colours_of'), f'{tr("frame")} {like}' if like else '', 'L')]
+        rows = [('crop', tr('crop'), self.crop_text(frame['crop']) if frame else '', 'A'), ('turn', tr('turn'), '', 'T')]
+        if frame and self.roll.details['film_type'] != 'colour_positive':
+            _, source, kind = self.film_base(self.sel)
+            rows.append(('film_base', tr('film_base'), tr('fb_estimated_short') if kind == 'estimated' else
+                         '' if kind == 'own' else f'{tr("frame")} {source}', 'B'))
+        return [*rows, ('rescan', tr('rescan'), '', 'R')]
 
     def copy_auto(self):
         """Ctrl+U: copy the frame's automatic correction (or that of the frame it follows), to apply with U."""
@@ -817,20 +876,24 @@ class MainWindow(QMainWindow):
     def start_colour_choosing(self):
         if not self.can_correct() or self.roll.details['film_type'] == 'bw_negative' or len(self.roll.frames) < 2:
             return
-        source = self.frame(self.sel).get('colour_from')
+        source = self.frame(self.sel).get('auto_from') or self.frame(self.sel).get('colour_from')
+        self.tab = 'colour'
         self.colour_choosing = source or (self.sel - 1 if self.sel > 1 else 2)
         self.grid = False
         self.refresh()
 
-    def colour_key(self, key):
+    def colour_key(self, key, whole=False):
         if key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
             self.colour_choosing = max(1, min(len(self.roll.frames), self.colour_choosing + (1 if key == Qt.Key.Key_Right else -1)))
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Delete):
             source = None if key == Qt.Key.Key_Delete else self.colour_choosing
+            self.colour_choosing = None
+            if whole and source and source != self.sel:
+                # With its brightness too: the frame takes that frame's whole auto correction (as U does).
+                return self.change(self.sel, auto_from=self.frame(source).get('auto_from') or source, colour_from=None)
             # The frame's own colours, or those it takes from another: never a circle.
             source = self.frame(source).get('colour_from') or source if source else None
-            self.colour_choosing = None
-            self.change(self.sel, colour_from=None if source == self.sel else source)
+            self.change(self.sel, colour_from=None if source == self.sel else source, auto_from=None)
             return
         elif key == Qt.Key.Key_Escape:
             self.colour_choosing = None
@@ -956,7 +1019,7 @@ class MainWindow(QMainWindow):
         elif self.choosing:
             self.choose_key(key)
         elif self.colour_choosing:
-            self.colour_key(key)
+            self.colour_key(key, whole=bool(mods & Qt.KeyboardModifier.ShiftModifier))
         elif self.neutral_picking:
             if key == Qt.Key.Key_Escape:
                 self.neutral_picking = False
@@ -987,6 +1050,8 @@ class MainWindow(QMainWindow):
             self.start_choosing()
         elif key == Qt.Key.Key_P:
             self.start_presets()
+        elif key == Qt.Key.Key_Tab:
+            self.show_tab()
         elif key == Qt.Key.Key_N:
             self.start_neutral(not mods & Qt.KeyboardModifier.ShiftModifier)
         elif key == Qt.Key.Key_L:
@@ -1066,8 +1131,8 @@ class MainWindow(QMainWindow):
         self.strip.setVisible(has)
         self.footer.setVisible(True)
         steps = {'none': tr('step_none'), 'load': tr('step_load'), 'preview_run': tr('step_preview_run'), 'calibrate': tr('step_calibrate'),
-                 'preview': tr('step_preview'), 'raw': tr('step_raw'), 'fail': tr('step_fail'),
-                 'rescan_load': tr('step_rescan', n=self.target or 0), 'preview_rescan': tr('step_rescan_preview')}
+                 'preview': tr('step_preview', s=self.countdown), 'raw': tr('step_raw'), 'fail': tr('step_fail'),
+                 'rescan_load': tr('step_rescan', n=self.target or 0), 'preview_rescan': tr('step_rescan_preview', s=self.countdown)}
         step = 'preview_rescan' if self.step == 'preview' and self.rescanning else self.step
         if self.progress:
             fraction, index, count = self.progress
@@ -1095,7 +1160,7 @@ class MainWindow(QMainWindow):
             n = self.target
             title = f'{tr("frame")} {n}' + (' · ' + tr('rescan') if self.rescanning else '')
             self.view.show(self.preview, 'preview', info=(tr('preview_lowres'), tr('preview_not_saved')),
-                           preview=(title, tr('rescan') if self.rescanning else tr('scan'),
+                           preview=(title, f"{tr('rescan') if self.rescanning else tr('scan')} · {self.countdown} s",
                                     tr('cancel_rescan') if self.rescanning else tr('reload')))
             self.stack.setCurrentWidget(self.view)
         elif self.cropping:
@@ -1153,41 +1218,29 @@ class MainWindow(QMainWindow):
         # While the preset list is open the frame cannot take keys, but the panel shows the list, not a lock.
         locked = not self.can_correct() and self.picking is None
         if not self.sel or locked:
-            values, corrected, crop = dict(develop.AUTO), False, '—'
+            values, corrected = dict(develop.AUTO), False
         else:
-            frame = self.frame(self.sel)
-            values, corrected, crop = frame['correction'], frame['correction'] != develop.AUTO, self.crop_text(frame['crop'])
+            values = self.frame(self.sel)['correction']
+            corrected = values != develop.AUTO
         scene = values['scene']
         frame_label = f'{tr("frame")} {self.target if locked and self.step in ("preview", "fail") else self.sel or ""}'
         film_base = None
         if self.sel and self.step not in ('preview', 'preview_run', 'fail') and not self.cropping:
-            base, source, kind = self.film_base(self.sel)
             if self.colour_choosing:
                 film_base = {'title': tr('colour_from', m=self.colour_choosing), 'action': tr('fb_choosing'), 'sub': tr('colour_hint'),
                              'keys': tr('colour_keys'), 'badge': 'FA', 'key': 'L'}
             elif self.choosing:
-                film_base = {'title': tr('fb_from', m=source), 'action': tr('fb_choosing'), 'sub': tr('fb_choose_hint'),
+                film_base = {'title': tr('fb_from', m=self.film_base(self.sel)[1]), 'action': tr('fb_choosing'), 'sub': tr('fb_choose_hint'),
                              'keys': tr('fb_keys')}
-            elif kind in ('borrowed', 'chosen', 'estimated'):
-                film_base = {'title': tr('fb_estimated') if kind == 'estimated' else tr('fb_from', m=source),
-                             'action': tr('fb_change'), 'keys': None,
-                             'sub': {'borrowed': tr('fb_auto', n=self.sel), 'chosen': tr('fb_chosen'), 'estimated': tr('fb_none')}[kind]}
         status = '' if locked else '· ' + tr('corrected' if corrected else 'auto') + (
             f' · {tr("scene_" + scene)}' if scene != 'standard' else '')
-        if not locked and self.frame(self.sel).get('auto_from'):
-            status += ' · ' + tr('auto_from', m=self.frame(self.sel)['auto_from'])
-        elif not locked and self.frame(self.sel).get('colour_from'):
-            status += ' · ' + tr('colours_like', m=self.frame(self.sel)['colour_from'])
-        elif not locked and frames.greys(self.frame(self.sel)):
-            count = len(frames.greys(self.frame(self.sel)))
-            status += ' · ' + (tr('neutral_set') if count == 1 else tr('neutral_many', n=count))
         picking = None
         if self.picking is not None and not locked:
             picking = {'items': self.preset_list(), 'selected': self.picking}
         hist = self.images.get(self.sel, (None, None, None, None))[3] if self.sel and not locked else None
         self.panel.update_state({'frame': frame_label, 'status': status, 'presets': picking, 'hist': hist,
                                  'corrected': corrected and not locked, 'values': values, 'locked': locked,
-                                 'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'crop': '—' if locked else crop,
+                                 'bw': self.roll.details['film_type'] == 'bw_negative', 'tone': self.tone, 'tab': self.tab, 'actions': self.actions(),
                                  'export': self.export_status(self.sel) if self.sel and not locked else ('–', '#6e6e6e', tr('no_export')),
                                  'film_base': film_base, 'pad': not self.choosing and not self.colour_choosing,
                                  'locked_note': not self.choosing and not self.colour_choosing and not self.neutral_picking})
